@@ -1,0 +1,10 @@
+# Git Attributes
+# Project: Smart Building Energy Management Bot
+# Author: Amin Davodian (Mohammadamin Davodian)
+# Website: https://senioramin.com
+# LinkedIn: https://linkedin.com/in/SudoAmin
+# GitHub: https://github.com/SeniorAminam
+
+* text=auto eol=lf
+
+*.bat -text

@@ -1,0 +1,30 @@
+{
+    "name": "senioramin/smart-building-bot",
+    "description": "Smart Building Energy Management Telegram Bot with IoT Simulation",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Amin Davodian",
+            "email": "contact@senioramin.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "vlucas/phpdotenv": "^5.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "SmartBuilding\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    }
+}

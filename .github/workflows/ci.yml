@@ -1,0 +1,42 @@
+# Project: Smart Building Energy Management Bot
+# File: .github/workflows/ci.yml
+# Author: Amin Davodian (Mohammadamin Davodian)
+# Website: https://senioramin.com
+# LinkedIn: https://linkedin.com/in/SudoAmin
+# GitHub: https://github.com/SeniorAminam
+# Created: 2025-12-25
+#
+# Purpose: Basic CI (Composer validate + PHP lint)
+# Developed by Amin Davodian
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo, curl, json, mbstring
+
+      - name: Validate composer.json
+        run: composer validate --no-interaction
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: PHP syntax check
+        run: |
+          find . -type f -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l
