@@ -42,17 +42,52 @@ class BotHandler
      */
     public function handle(): void
     {
-        // Handle callback queries (inline keyboard buttons)
-        if (isset($this->update['callback_query'])) {
-            $this->handleCallback();
-            return;
+        try {
+            // Handle callback queries (inline keyboard buttons)
+            if (isset($this->update['callback_query'])) {
+                $this->handleCallback();
+                return;
+            }
+
+            // Handle messages
+            if (isset($this->update['message'])) {
+                $this->handleMessage();
+                return;
+            }
+        } catch (\Throwable $e) {
+            Logger::error('update_handle_failed', $e->getMessage(), [
+                'has_message' => isset($this->update['message']),
+                'has_callback' => isset($this->update['callback_query']),
+            ]);
+
+            $chatId = $this->extractChatId();
+            if ($chatId !== null) {
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "❌ <b>خطای داخلی ربات</b>\n" .
+                    Telegram::hr() . "\n" .
+                    "سیستم نتوانست درخواست را پردازش کند.\n\n" .
+                    "✅ پیشنهاد سریع برای لوکال:\n" .
+                    "- اگر روی WSL اجرا می‌کنی: افزونه <code>pdo_mysql</code> را نصب/فعال کن\n" .
+                    "- یا ربات را با PHP داخل XAMPP اجرا کن\n"
+                );
+            }
+        }
+    }
+
+    private function extractChatId(): ?int
+    {
+        $chatId = $this->update['message']['chat']['id'] ?? null;
+        if (is_int($chatId) || is_numeric($chatId)) {
+            return (int)$chatId;
         }
 
-        // Handle messages
-        if (isset($this->update['message'])) {
-            $this->handleMessage();
-            return;
+        $chatId = $this->update['callback_query']['message']['chat']['id'] ?? null;
+        if (is_int($chatId) || is_numeric($chatId)) {
+            return (int)$chatId;
         }
+
+        return null;
     }
 
     /**
@@ -119,14 +154,27 @@ class BotHandler
             'role' => $role
         ]);
 
-        $welcomeText = "🎉 <b>خوش آمدید!</b>\n\n";
+        $name = (string)($message['from']['first_name'] ?? '');
+        $nameLine = $name !== '' ? "سلام <b>{$name}</b> 👋\n" : "سلام 👋\n";
+
+        $welcomeText = "✨ <b>سامانه مدیریت هوشمند انرژی ساختمان</b>\n";
+        $welcomeText .= Telegram::hr() . "\n";
+        $welcomeText .= $nameLine;
 
         if ($role === 'admin') {
-            $welcomeText .= "شما به عنوان <b>مدیر سیستم</b> ثبت شدید.\n";
-            $welcomeText .= "از دکمه‌های منو برای مدیریت سیستم استفاده کنید.";
+            $welcomeText .= "🛡️ نقش شما: <b>مدیر سیستم</b>\n";
+            $welcomeText .= Telegram::hr() . "\n";
+            $welcomeText .= "برای شروع:\n";
+            $welcomeText .= "1) دکمه <b>🏠 منوی اصلی</b>\n";
+            $welcomeText .= "2) بخش <b>🧪 ابزارها</b> برای دمو سریع\n";
+            $welcomeText .= "3) بخش <b>📈 گزارش</b> برای خروجی جذاب\n";
         } else {
-            $welcomeText .= "ثبت‌نام شما انجام شد.\n";
-            $welcomeText .= "لطفاً منتظر بمانید تا مدیر سیستم واحد شما را تخصیص دهد.";
+            $welcomeText .= "✅ ثبت‌نام شما انجام شد.\n";
+            $welcomeText .= "⏳ وضعیت: <b>در انتظار تخصیص واحد</b>\n";
+            $welcomeText .= Telegram::hr() . "\n";
+            $welcomeText .= "تا زمان تخصیص، این گزینه‌ها برای شما فعال است:\n";
+            $welcomeText .= "• <b>🆔 شناسه من</b>\n";
+            $welcomeText .= "• <b>📞 تماس با مدیر</b>\n";
         }
 
         $this->telegram->sendMessage($chatId, $welcomeText);
@@ -209,14 +257,14 @@ class BotHandler
     private function pendingAssignmentKeyboard(string $role): array
     {
         $buttons = [
-            [Telegram::keyboardButton('🏠 منوی اصلی')],
-            [Telegram::keyboardButton('📚 راهنما')]
+            [Telegram::keyboardButton('منوی اصلی 🏠')],
+            [Telegram::keyboardButton('راهنما 📚')]
         ];
 
-        $buttons[] = [Telegram::keyboardButton('🆔 شناسه من')];
+        $buttons[] = [Telegram::keyboardButton('شناسه من 🆔')];
 
         if ($role === 'consumer') {
-            $buttons[] = [Telegram::keyboardButton('📞 تماس با مدیر')];
+            $buttons[] = [Telegram::keyboardButton('تماس با مدیر 📞')];
         }
 
         return Telegram::replyKeyboard($buttons);
@@ -418,6 +466,12 @@ class BotHandler
                 return;
             }
 
+            if ($data === 'admin_mark_all_alerts_read') {
+                $panel->markAllAlertsRead();
+                $panel->showAlerts();
+                return;
+            }
+
             match ($data) {
                 'admin_home' => $panel->showMainMenu(),
                 'admin_buildings' => $panel->showBuildings(),
@@ -431,11 +485,21 @@ class BotHandler
                 'admin_prices' => $panel->showPriceSettings(),
                 'admin_settings' => $panel->showSettings(),
                 'admin_report' => $panel->showSystemReport(),
+                'admin_alerts' => $panel->showAlerts(),
+                'admin_carbon' => $panel->showSystemCarbon('today'),
+                'admin_carbon_week' => $panel->showSystemCarbon('week'),
+                'admin_carbon_month' => $panel->showSystemCarbon('month'),
                 'admin_tools' => $panel->showToolsMenu(),
+                'admin_webhook_menu' => $panel->showWebhookMenu(),
+                'admin_webhook_info' => $panel->webhookInfo(),
+                'admin_webhook_set' => $panel->webhookSetFromEnv(),
+                'admin_webhook_delete' => $panel->webhookDelete(),
                 'admin_tools_seed' => $panel->showSeedMenu(),
                 'admin_tools_seed_safe' => $panel->seedSampleData(false),
                 'admin_tools_seed_reset_confirm' => $panel->showSeedResetConfirm(),
                 'admin_tools_seed_reset_run' => $panel->seedSampleData(true),
+                'admin_tools_reset_all_confirm' => $panel->showResetAllConfirm(),
+                'admin_tools_reset_all_run' => $panel->resetAllData(),
                 'admin_tools_presets' => $panel->showSimulationPresetsMenu(),
                 'admin_tools_preset_guest' => $panel->simulatePresetGuest(),
                 'admin_tools_preset_high' => $panel->simulatePresetHigh(),
@@ -656,7 +720,9 @@ class BotHandler
         $this->telegram->editMessage(
             $chatId,
             $messageId,
-            "✅ اعتبارات {$count} واحد محاسبه شد.",
+            "✅ <b>بروزرسانی اعتبارات انجام شد</b>\n" .
+                Telegram::hr() . "\n" .
+                "📌 تعداد موارد پردازش‌شده: <b>{$count}</b>",
             Telegram::inlineKeyboard([
                 [Telegram::inlineButton('🔄 بروزرسانی مجدد', 'admin_refresh_credits')],
                 [Telegram::inlineButton('🔙 بازگشت', 'admin_home')]
@@ -679,7 +745,7 @@ class BotHandler
         $this->telegram->editMessage(
             $chatId,
             $messageId,
-            "✅ اعتبارات محاسبه شد.",
+            "✅ <b>محاسبه اعتبارات ساختمان انجام شد</b>\n" . Telegram::hr(),
             Telegram::inlineKeyboard([
                 [Telegram::inlineButton('💰 مدیریت اعتبارات', 'mgr_credits')],
                 [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
@@ -692,10 +758,16 @@ class BotHandler
      */
     private function showHelp(int $chatId): void
     {
-        $text = "<b>راهنمای ربات</b>\n\n";
-        $text .= "این ربات با <b>دکمه‌های کیبورد</b> و <b>دکمه‌های شیشه‌ای</b> کار می‌کند.\n";
-        $text .= "برای مشاهده منو، دکمه <b>🏠 منوی اصلی</b> را بزنید.\n\n";
-        $text .= "اگر به واحد/ساختمان تخصیص داده نشده‌اید، ابتدا مدیر سیستم باید شما را تخصیص دهد.";
+        $text = "📚 <b>راهنمای سریع</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "این ربات با دو نوع دکمه کار می‌کند:\n";
+        $text .= "1) <b>کیبورد پایین صفحه</b> (دکمه‌های ثابت)\n";
+        $text .= "2) <b>دکمه‌های داخل پیام</b> (شیشه‌ای/Inline)\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "نکته‌ها:\n";
+        $text .= "• برای برگشت همیشه <b>بازگشت 🔙</b> را بزنید.\n";
+        $text .= "• اگر منو را نمی‌بینید، دکمه <b>منوی اصلی 🏠</b> را بزنید.\n";
+        $text .= "• اگر تخصیص ندارید، ابتدا مدیر سیستم باید شما را به ساختمان/واحد وصل کند.";
 
         $this->telegram->sendMessage($chatId, $text);
     }
@@ -706,7 +778,8 @@ class BotHandler
             "SELECT first_name, username FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY created_at ASC LIMIT 10"
         );
 
-        $text = "📞 <b>تماس با مدیر سیستم</b>\n\n";
+        $text = "📞 <b>تماس با مدیر سیستم</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         if (empty($admins)) {
             $text .= "در حال حاضر مدیری ثبت نشده است.";
@@ -731,12 +804,12 @@ class BotHandler
      */
     private function handleKeyboardButton(string $text, int $chatId, array $user): void
     {
-        if ($text === '📚 راهنما') {
+        if ($text === '📚 راهنما' || $text === 'راهنما 📚') {
             $this->showHelp($chatId);
             return;
         }
 
-        if ($text === '🆔 شناسه من') {
+        if ($text === '🆔 شناسه من' || $text === 'شناسه من 🆔') {
             $this->telegram->sendMessage(
                 $chatId,
                 "🆔 شناسه تلگرام شما: <code>{$chatId}</code>"
@@ -744,7 +817,7 @@ class BotHandler
             return;
         }
 
-        if ($text === '📞 تماس با مدیر') {
+        if ($text === '📞 تماس با مدیر' || $text === 'تماس با مدیر 📞') {
             $this->showAdminContacts($chatId);
             return;
         }
@@ -770,13 +843,15 @@ class BotHandler
         $panel = new AdminPanel($this->telegram, $chatId);
 
         match ($text) {
-            '🏢 ساختمان‌ها' => $panel->showBuildings(),
-            '👥 کاربران' => $panel->showUsers(),
-            '💲 قیمت‌ها' => $panel->showPriceSettings(),
-            '📈 گزارش' => $panel->showSystemReport(),
-            '⚙️ تنظیمات' => $panel->showSettings(),
-            '🧪 ابزارها' => $panel->showToolsMenu(),
-            '🏠 منوی اصلی' => $panel->showMainMenu(),
+            '🏢 ساختمان‌ها', 'ساختمان‌ها 🏢' => $panel->showBuildings(),
+            '👥 کاربران', 'کاربران 👥' => $panel->showUsers(),
+            '💲 قیمت‌ها', 'قیمت‌ها 💲' => $panel->showPriceSettings(),
+            '📈 گزارش', 'گزارش 📈' => $panel->showSystemReport(),
+            '⚠️ هشدارها', 'هشدارها ⚠️' => $panel->showAlerts(),
+            '🌍 کربن', 'کربن 🌍' => $panel->showSystemCarbon('today'),
+            '⚙️ تنظیمات', 'تنظیمات ⚙️' => $panel->showSettings(),
+            '🧪 ابزارها', 'ابزارها 🧪' => $panel->showToolsMenu(),
+            '🏠 منوی اصلی', 'منوی اصلی 🏠' => $panel->showMainMenu(),
             default => $panel->showMainMenu()
         };
     }
@@ -789,13 +864,13 @@ class BotHandler
         $panel = new ManagerPanel($this->telegram, $chatId, $buildingId);
 
         match ($text) {
-            '🏠 واحدها' => $panel->showUnits(),
-            '📊 مصرف لحظه‌ای' => $panel->showLiveConsumption(),
-            '🌍 کربن' => $panel->showBuildingCarbon('today'),
-            '⚠️ هشدارها' => $panel->showAlerts(),
-            '💰 اعتبارات' => $panel->showCreditsManagement(),
-            '🧪 شبیه‌سازی' => $panel->simulateNow(),
-            '🏠 منوی اصلی' => $panel->showMainMenu(),
+            '🏠 واحدها', 'واحدها 🏠' => $panel->showUnits(),
+            '📊 مصرف لحظه‌ای', 'مصرف لحظه‌ای 📊' => $panel->showLiveConsumption(),
+            '🌍 کربن', 'کربن 🌍' => $panel->showBuildingCarbon('today'),
+            '⚠️ هشدارها', 'هشدارها ⚠️' => $panel->showAlerts(),
+            '💰 اعتبارات', 'اعتبارات 💰' => $panel->showCreditsManagement(),
+            '🧪 شبیه‌سازی', 'شبیه‌سازی 🧪', '🧪 شبیه سازی', 'شبیه سازی 🧪' => $panel->simulateNow(),
+            '🏠 منوی اصلی', 'منوی اصلی 🏠' => $panel->showMainMenu(),
             default => $panel->showMainMenu()
         };
     }
@@ -808,14 +883,14 @@ class BotHandler
         $panel = new ConsumerPanel($this->telegram, $chatId, $unitId);
 
         match ($text) {
-            '📊 مصرف امروز' => $panel->showTodayConsumption(),
-            '📈 آمار هفتگی' => $panel->showWeeklyStats(),
-            '🌍 کربن' => $panel->showCarbon('today'),
-            '🎛 مدیریت هوشمند' => $panel->showSmartMenu(),
-            '⚠️ هشدارها' => $panel->showAlerts(),
-            '💰 اعتبارات' => $panel->showCredits(),
-            '💵 هزینه‌ها' => $panel->showCosts(),
-            '🏠 منوی اصلی' => $panel->showMainMenu(),
+            '📊 مصرف امروز', 'مصرف امروز 📊' => $panel->showTodayConsumption(),
+            '📈 آمار هفتگی', 'آمار هفتگی 📈' => $panel->showWeeklyStats(),
+            '🌍 کربن', 'کربن 🌍' => $panel->showCarbon('today'),
+            '🎛 مدیریت هوشمند', 'مدیریت هوشمند 🎛' => $panel->showSmartMenu(),
+            '⚠️ هشدارها', 'هشدارها ⚠️' => $panel->showAlerts(),
+            '💰 اعتبارات', 'اعتبارات 💰' => $panel->showCredits(),
+            '💵 هزینه‌ها', 'هزینه‌ها 💵', '💵 هزینه ها', 'هزینه ها 💵' => $panel->showCosts(),
+            '🏠 منوی اصلی', 'منوی اصلی 🏠' => $panel->showMainMenu(),
             default => $panel->showMainMenu()
         };
     }

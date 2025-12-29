@@ -72,6 +72,13 @@ class DB
         return $stmt->execute($params);
     }
 
+    public static function executeWithRowCount(string $query, array $params = []): int
+    {
+        $stmt = self::getInstance()->prepare($query);
+        $stmt->execute($params);
+        return (int)$stmt->rowCount();
+    }
+
     /**
      * Get last inserted ID
      */

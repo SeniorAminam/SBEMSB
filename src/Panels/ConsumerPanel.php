@@ -73,56 +73,67 @@ class ConsumerPanel
 
         $alertBadge = $alertsCount[0]['count'] > 0 ? " ({$alertsCount[0]['count']})" : "";
 
+        $creditEngine = new CreditEngine();
+        $credits = $creditEngine->getCredits($this->unitId);
+        $hasNegative = false;
+        foreach ($credits as $credit) {
+            if ($credit < 0) {
+                $hasNegative = true;
+                break;
+            }
+        }
+
         // Persistent keyboard buttons (main navigation)
         $keyboard = Telegram::replyKeyboard([
             [
-                Telegram::keyboardButton('📊 مصرف امروز'),
-                Telegram::keyboardButton('📈 آمار هفتگی')
+                Telegram::keyboardButton('مصرف امروز 📊'),
+                Telegram::keyboardButton('آمار هفتگی 📈')
             ],
             [
-                Telegram::keyboardButton('🌍 کربن'),
-                Telegram::keyboardButton('💵 هزینه‌ها')
+                Telegram::keyboardButton('هزینه‌ها 💵'),
+                Telegram::keyboardButton('کربن 🌍')
             ],
             [
-                Telegram::keyboardButton('🎛 مدیریت هوشمند')
+                Telegram::keyboardButton('هشدارها ⚠️'),
+                Telegram::keyboardButton('اعتبارات 💰')
             ],
             [
-                Telegram::keyboardButton('⚠️ هشدارها'),
-                Telegram::keyboardButton('💰 اعتبارات')
+                Telegram::keyboardButton('مدیریت هوشمند 🎛')
             ],
             [
-                Telegram::keyboardButton('🏠 منوی اصلی')
+                Telegram::keyboardButton('منوی اصلی 🏠'),
+                Telegram::keyboardButton('تماس با مدیر 📞')
             ],
             [
-                Telegram::keyboardButton('📞 تماس با مدیر')
-            ],
-            [
-                Telegram::keyboardButton('📚 راهنما'),
-                Telegram::keyboardButton('🆔 شناسه من')
+                Telegram::keyboardButton('راهنما 📚'),
+                Telegram::keyboardButton('شناسه من 🆔')
             ]
         ]);
 
-        $text = "🏠 <b>واحد شما: طبقه {$unit['floor_number']} - {$unit['unit_name']}</b>\n\nخوش آمدید\n\n" .
-            "از دکمه‌های زیر برای مشاهده اطلاعات استفاده کنید.";
+        $unread = (int)($alertsCount[0]['count'] ?? 0);
+        $creditStatus = $hasNegative ? '⚠️ <b>نیاز به شارژ اعتبار</b>' : '✅ <b>اعتبار شما مطلوب است</b>';
+
+        $text = "🏠 <b>داشبورد واحد</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📍 <b>طبقه {$unit['floor_number']} · واحد {$unit['unit_name']}</b>\n\n";
+        $text .= "🔔 هشدارهای خوانده‌نشده: <b>{$unread}</b>{$alertBadge}\n";
+        $text .= "💳 وضعیت اعتبار: {$creditStatus}\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "یک بخش را انتخاب کنید:";
 
         if ($this->contextMessageId !== null) {
             $inlineButtons = [
-                [Telegram::inlineButton('📊 مصرف امروز', 'con_today'), Telegram::inlineButton('📈 آمار هفتگی', 'con_weekly')],
-                [Telegram::inlineButton('🌍 کربن', 'con_carbon'), Telegram::inlineButton('💵 هزینه‌ها', 'con_costs')],
-                [Telegram::inlineButton('🎛 مدیریت هوشمند', 'con_smart')],
-                [Telegram::inlineButton('⚠️ هشدارها' . $alertBadge, 'con_alerts'), Telegram::inlineButton('💰 اعتبارات', 'con_credits')],
+                [Telegram::inlineButton('مصرف امروز 📊', 'con_today'), Telegram::inlineButton('هزینه‌ها 💵', 'con_costs')],
+                [Telegram::inlineButton('آمار هفتگی 📈', 'con_weekly'), Telegram::inlineButton('کربن 🌍', 'con_carbon')],
+                [Telegram::inlineButton('مدیریت هوشمند (Digital Twin) 🧬', 'con_smart')],
+                [Telegram::inlineButton('هشدارها 🔔' . $alertBadge, 'con_alerts'), Telegram::inlineButton('اعتبارات 💳', 'con_credits')],
             ];
 
-            $creditEngine = new CreditEngine();
-            $credits = $creditEngine->getCredits($this->unitId);
-            foreach ($credits as $credit) {
-                if ($credit < 0) {
-                    $inlineButtons[] = [Telegram::inlineButton('🛒 خرید اعتبار', 'con_buy_credit')];
-                    break;
-                }
+            if ($hasNegative) {
+                $inlineButtons[] = [Telegram::inlineButton('خرید اعتبار (اقدام فوری) 🛒', 'con_buy_credit')];
             }
 
-            $inlineButtons[] = [Telegram::inlineButton('🔙 بازگشت', 'con_home')];
+            $inlineButtons[] = [Telegram::inlineButton('بازگشت 🔙', 'con_home')];
 
             $this->respond($text, Telegram::inlineKeyboard($inlineButtons));
             return;
@@ -136,27 +147,17 @@ class ConsumerPanel
 
         if ($alertsCount[0]['count'] > 0) {
             $needsAction = true;
-            $inlineButtons[] = [Telegram::inlineButton("⚠️ هشدارها{$alertBadge}", 'con_alerts')];
-        }
-
-        $creditEngine = new CreditEngine();
-        $credits = $creditEngine->getCredits($this->unitId);
-        $hasNegative = false;
-        foreach ($credits as $credit) {
-            if ($credit < 0) {
-                $hasNegative = true;
-                break;
-            }
+            $inlineButtons[] = [Telegram::inlineButton("هشدارها{$alertBadge} ⚠️", 'con_alerts')];
         }
 
         if ($hasNegative) {
             $needsAction = true;
-            $inlineButtons[] = [Telegram::inlineButton('🛒 خرید اعتبار', 'con_buy_credit')];
+            $inlineButtons[] = [Telegram::inlineButton('خرید اعتبار (اقدام فوری) 🛒', 'con_buy_credit')];
         }
 
         if ($needsAction) {
             $this->respond(
-                "⚡ <b>نیاز به توجه:</b>",
+                "🚨 <b>اقدامات فوری</b>\n" . Telegram::hr(),
                 Telegram::inlineKeyboard($inlineButtons),
                 true
             );
@@ -203,37 +204,41 @@ class ConsumerPanel
         $greenSens = (int)($state['green_sensitivity'] ?? 50);
         $budget = (int)($state['monthly_budget_toman'] ?? 1500000);
 
-        $text = "🎛 <b>پنل مدیریت هوشمند (Digital Twin)</b>\n\n";
+        $costBar = Telegram::progressBar($costSens / 100, 10);
+        $greenBar = Telegram::progressBar($greenSens / 100, 10);
+
+        $text = "🧬 <b>مدیریت هوشمند (Digital Twin)</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "🎭 سناریو: <b>{$scenarioLabel}</b>\n";
         $text .= "🗓 فصل: <b>{$seasonLabel}</b>\n";
-        $text .= "♻️ Eco Mode: <b>{$ecoLabel}</b>\n\n";
-        $text .= "💡 چراغ‌ها: <b>{$lightsLabel}</b>\n";
-        $text .= "❄️ کولر: <b>{$acLabel}</b>\n";
-        $text .= "🔥 دمای گرمایش: <b>{$heatingTemp}°</b>\n";
-        $text .= "🚿 آبگرمکن: <b>{$waterHeaterLabel}</b>\n\n";
+        $text .= "♻️ Eco Mode: <b>{$ecoLabel}</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "💡 چراغ‌ها: <b>{$lightsLabel}</b>   🚿 آبگرمکن: <b>{$waterHeaterLabel}</b>\n";
+        $text .= "❄️ کولر: <b>{$acLabel}</b>   🔥 گرمایش: <b>{$heatingTemp}°</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "💰 بودجه ماهانه: <b>" . Telegram::formatPrice((float)$budget) . "</b>\n";
-        $text .= "🎯 حساسیت اقتصادی: <b>{$costSens}/100</b>\n";
-        $text .= "🌍 حساسیت سبز: <b>{$greenSens}/100</b>\n";
+        $text .= "🎯 اقتصادی: {$costBar} <b>{$costSens}</b>/100\n";
+        $text .= "🌍 سبز: {$greenBar} <b>{$greenSens}</b>/100\n";
 
         $keyboard = Telegram::inlineKeyboard([
             [
-                Telegram::inlineButton('🎭 سناریو', 'con_scn'),
-                Telegram::inlineButton('🗓 فصل', 'con_season')
+                Telegram::inlineButton('سناریو 🎭', 'con_scn'),
+                Telegram::inlineButton('فصل 🗓', 'con_season')
             ],
             [
-                Telegram::inlineButton('⚙️ تجهیزات', 'con_devices'),
-                Telegram::inlineButton('♻️ Eco Mode', 'con_eco')
+                Telegram::inlineButton('تجهیزات 🧩', 'con_devices'),
+                Telegram::inlineButton('Eco Mode ♻️', 'con_eco')
             ],
             [
-                Telegram::inlineButton('💰 بودجه', 'con_budget'),
-                Telegram::inlineButton('🎯 حساسیت‌ها', 'con_sens')
+                Telegram::inlineButton('بودجه 💰', 'con_budget'),
+                Telegram::inlineButton('حساسیت‌ها 🎯', 'con_sens')
             ],
             [
-                Telegram::inlineButton('🧪 شبیه‌سازی الان', 'con_sim_now'),
-                Telegram::inlineButton('🔮 پیش‌بینی', 'con_forecast')
+                Telegram::inlineButton('شبیه‌سازی الان 🧪', 'con_sim_now'),
+                Telegram::inlineButton('پیش‌بینی 🔮', 'con_forecast')
             ],
-            [Telegram::inlineButton('🧠 پیشنهادهای هوشمند', 'con_reco')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_home')]
+            [Telegram::inlineButton('پیشنهادهای هوشمند 🧠', 'con_reco')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -255,15 +260,15 @@ class ConsumerPanel
 
         $keyboard = Telegram::inlineKeyboard([
             [
-                $btn('🏠 خانه خالی', 'empty', $current),
-                $btn('👨‍👩‍👧 خانواده', 'family', $current)
+                $btn('خانه خالی 🏠', 'empty', $current),
+                $btn('خانواده 👨‍👩‍👧', 'family', $current)
             ],
             [
-                $btn('🎉 مهمانی', 'party', $current),
-                $btn('🌙 شب', 'night', $current)
+                $btn('مهمانی 🎉', 'party', $current),
+                $btn('شب 🌙', 'night', $current)
             ],
-            [$btn('✈️ مسافرت', 'travel', $current)],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [$btn('مسافرت ✈️', 'travel', $current)],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -291,9 +296,9 @@ class ConsumerPanel
         };
 
         $keyboard = Telegram::inlineKeyboard([
-            [$btn('🌱 بهار', 'spring', $current), $btn('☀️ تابستان', 'summer', $current)],
-            [$btn('🍂 پاییز', 'autumn', $current), $btn('❄️ زمستان', 'winter', $current)],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [$btn('بهار 🌱', 'spring', $current), $btn('تابستان ☀️', 'summer', $current)],
+            [$btn('پاییز 🍂', 'autumn', $current), $btn('زمستان ❄️', 'winter', $current)],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -316,17 +321,29 @@ class ConsumerPanel
         $acMode = (string)($state['ac_mode'] ?? 'off');
         $heatingTemp = (int)($state['heating_temp'] ?? 22);
 
-        $text = "⚙️ <b>کنترل تجهیزات (شبیه‌سازی)</b>\n\n";
+        $acLabel = match ($acMode) {
+            'low' => 'کم',
+            'medium' => 'متوسط',
+            'high' => 'زیاد',
+            default => 'خاموش',
+        };
+
+        $lightsBtn = '💡 چراغ‌ها: ' . ($lights ? 'روشن ✅' : 'خاموش ❌');
+        $whBtn = '🚿 آبگرمکن: ' . ($waterHeater ? 'روشن ✅' : 'خاموش ❌');
+
+        $text = "🧩 <b>کنترل تجهیزات</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "💡 چراغ‌ها: <b>" . ($lights ? 'روشن' : 'خاموش') . "</b>\n";
         $text .= "🚿 آبگرمکن: <b>" . ($waterHeater ? 'روشن' : 'خاموش') . "</b>\n";
-        $text .= "❄️ کولر: <b>" . ($acMode === 'off' ? 'خاموش' : $acMode) . "</b>\n";
-        $text .= "🔥 گرمایش: <b>{$heatingTemp}°</b>\n\n";
-        $text .= "هر تغییر، در شبیه‌سازی مصرف اثر می‌گذارد.";
+        $text .= "❄️ کولر: <b>{$acLabel}</b>\n";
+        $text .= "🔥 دمای گرمایش: <b>{$heatingTemp}°</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "با دکمه‌ها وضعیت را تغییر دهید:";
 
         $keyboard = Telegram::inlineKeyboard([
             [
-                Telegram::inlineButton('💡 روشن/خاموش', 'con_dev_toggle_lights'),
-                Telegram::inlineButton('🚿 آبگرمکن', 'con_dev_toggle_wh')
+                Telegram::inlineButton($lightsBtn, 'con_dev_toggle_lights'),
+                Telegram::inlineButton($whBtn, 'con_dev_toggle_wh')
             ],
             [
                 Telegram::inlineButton('❄️ خاموش', 'con_dev_ac_off'),
@@ -337,10 +354,10 @@ class ConsumerPanel
                 Telegram::inlineButton('❄️ زیاد', 'con_dev_ac_high')
             ],
             [
-                Telegram::inlineButton('🔥 دما -1', 'con_dev_heat_-1'),
-                Telegram::inlineButton('🔥 دما +1', 'con_dev_heat_1')
+                Telegram::inlineButton('🔥 دما -1°', 'con_dev_heat_-1'),
+                Telegram::inlineButton('🔥 دما +1°', 'con_dev_heat_1')
             ],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -417,28 +434,30 @@ class ConsumerPanel
         $carbonEngine = new CarbonEngine();
         $carbonForecast = $carbonEngine->forecastUnitMonthCarbonKg($this->unitId);
 
-        $text = "🔮 <b>پیش‌بینی ماه جاری</b>\n\n";
+        $text = "🔮 <b>پیش‌بینی ماه جاری</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "💰 هزینه تا امروز: <b>" . Telegram::formatPrice((float)$data['cost_so_far']) . "</b>\n";
         $text .= "📈 پیش‌بینی پایان ماه: <b>" . Telegram::formatPrice((float)$data['forecast_month']) . "</b> {$riskIcon}\n";
         $text .= "🎯 بودجه ماهانه: <b>" . Telegram::formatPrice((float)($data['budget'] ?? 0)) . "</b>\n";
-        $text .= "🌍 پیش‌بینی کربن پایان ماه: <b>" . round((float)$carbonForecast, 2) . "</b> kgCO₂e\n\n";
+        $text .= "🌍 پیش‌بینی کربن پایان ماه: <b>" . round((float)$carbonForecast, 2) . "</b> kgCO₂e\n";
+        $text .= Telegram::hr() . "\n";
 
         $cons = $data['consumption'] ?? ['water' => 0, 'electricity' => 0, 'gas' => 0];
         $prices = $data['prices'] ?? ['water' => 0, 'electricity' => 0, 'gas' => 0];
 
-        $text .= "<b>جزئیات مصرف این ماه:</b>\n";
+        $text .= "<b>جزئیات مصرف این ماه</b>\n";
         $text .= "💧 آب: " . round((float)$cons['water'], 1) . " × " . Telegram::formatPrice((float)$prices['water']) . "\n";
         $text .= "⚡ برق: " . round((float)$cons['electricity'], 1) . " × " . Telegram::formatPrice((float)$prices['electricity']) . "\n";
         $text .= "🔥 گاز: " . round((float)$cons['gas'], 1) . " × " . Telegram::formatPrice((float)$prices['gas']) . "\n";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 بروزرسانی', 'con_forecast')],
+            [Telegram::inlineButton('بروزرسانی 🔄', 'con_forecast')],
             [
-                Telegram::inlineButton('🧠 پیشنهادها', 'con_reco'),
-                Telegram::inlineButton('♻️ Eco Mode', 'con_apply_eco')
+                Telegram::inlineButton('پیشنهادها 🧠', 'con_reco'),
+                Telegram::inlineButton('Eco Mode ♻️', 'con_apply_eco')
             ],
-            [Telegram::inlineButton('💰 تنظیم بودجه', 'con_budget')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [Telegram::inlineButton('تنظیم بودجه 💰', 'con_budget')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -466,8 +485,8 @@ class ConsumerPanel
             $i++;
         }
 
-        $buttons[] = [Telegram::inlineButton('🔄 بروزرسانی', 'con_reco')];
-        $buttons[] = [Telegram::inlineButton('🔙 بازگشت', 'con_smart')];
+        $buttons[] = [Telegram::inlineButton('بروزرسانی 🔄', 'con_reco')];
+        $buttons[] = [Telegram::inlineButton('بازگشت 🔙', 'con_smart')];
 
         $this->respond($text, Telegram::inlineKeyboard($buttons));
     }
@@ -532,8 +551,8 @@ class ConsumerPanel
                 Telegram::inlineButton('➕ ۱۰۰هزار', 'con_budget_adj_100000'),
                 Telegram::inlineButton('➕ ۲۵۰هزار', 'con_budget_adj_250000')
             ],
-            [Telegram::inlineButton('🔄 بروزرسانی', 'con_budget')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [Telegram::inlineButton('بروزرسانی 🔄', 'con_budget')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -570,8 +589,8 @@ class ConsumerPanel
                 Telegram::inlineButton('🌍 -5', 'con_sens_green_-5'),
                 Telegram::inlineButton('🌍 +5', 'con_sens_green_5')
             ],
-            [Telegram::inlineButton('🔄 بروزرسانی', 'con_sens')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_smart')]
+            [Telegram::inlineButton('بروزرسانی 🔄', 'con_sens')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_smart')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -639,13 +658,13 @@ class ConsumerPanel
         $text .= "\n🧠 {$tip}";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 بروزرسانی', 'con_carbon')],
+            [Telegram::inlineButton('بروزرسانی 🔄', 'con_carbon')],
             [
-                Telegram::inlineButton('📅 امروز', 'con_carbon'),
-                Telegram::inlineButton('📆 هفته', 'con_carbon_week')
+                Telegram::inlineButton('امروز 📅', 'con_carbon'),
+                Telegram::inlineButton('هفته 📆', 'con_carbon_week')
             ],
-            [Telegram::inlineButton('📈 ۳۰ روز اخیر', 'con_carbon_month')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_home')]
+            [Telegram::inlineButton('۳۰ روز اخیر 📈', 'con_carbon_month')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -674,8 +693,9 @@ class ConsumerPanel
             $yesterdayData[$row['metric_type']] = (float)$row['total'];
         }
 
-        $text = "📊 <b>مصرف امروز شما</b>\n";
-        $text .= "<i>" . date('Y/m/d') . "</i>\n\n";
+        $text = "📊 <b>مصرف امروز</b>\n";
+        $text .= "<i>" . date('Y/m/d') . "</i>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         foreach (['water' => '💧 آب', 'electricity' => '⚡ برق', 'gas' => '🔥 گاز'] as $type => $label) {
             $today = $consumption[$type];
@@ -708,8 +728,8 @@ class ConsumerPanel
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('📊 آمار هفتگی', 'con_weekly')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_home')]
+            [Telegram::inlineButton('آمار هفتگی 📈', 'con_weekly'), Telegram::inlineButton('هزینه‌ها 💵', 'con_costs')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -732,7 +752,8 @@ class ConsumerPanel
             [$this->unitId]
         );
 
-        $text = "📊 <b>آمار هفته گذشته</b>\n\n";
+        $text = "📈 <b>آمار ۷ روز اخیر</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         foreach ($weeklyData as $data) {
             $icon = match ($data['metric_type']) {
@@ -749,14 +770,17 @@ class ConsumerPanel
                 default => $data['metric_type']
             };
 
+            $total = (float)($data['total'] ?? 0);
+            $dailyAvg = $total / 7.0;
+
             $text .= "{$icon} <b>{$name}</b>\n";
-            $text .= "   مجموع: " . round((float)$data['total'], 1) . "\n";
-            $text .= "   میانگین روزانه: " . round((float)$data['average'] * 288, 1) . "\n\n"; // 288 = readings per day (every 5 min)
+            $text .= "   مجموع: <b>" . round($total, 1) . "</b>\n";
+            $text .= "   میانگین روزانه (تقریبی): " . round($dailyAvg, 1) . "\n\n";
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('💧 مصرف امروز', 'con_today')],
-            [Telegram::inlineButton('🔙 بازگشت', 'con_home')]
+            [Telegram::inlineButton('مصرف امروز 💧', 'con_today')],
+            [Telegram::inlineButton('بازگشت 🔙', 'con_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -776,9 +800,10 @@ class ConsumerPanel
         );
 
         if (empty($alerts)) {
-            $text = "✅ هشداری وجود ندارد";
+            $text = "✅ <b>هشدارها</b>\n" . Telegram::hr() . "\n\n";
+            $text .= "فعلاً هشداری برای واحد شما ثبت نشده است.";
         } else {
-            $text = "⚠️ <b>هشدارهای شما</b>\n\n";
+            $text = "🔔 <b>هشدارهای شما</b>\n" . Telegram::hr() . "\n\n";
 
             foreach ($alerts as $alert) {
                 $icon = match ($alert['severity']) {
@@ -789,7 +814,8 @@ class ConsumerPanel
 
                 $text .= "{$icon} <b>{$alert['title']}</b>\n";
                 $text .= "{$alert['message']}\n";
-                $text .= "<i>" . date('H:i - Y/m/d', strtotime($alert['created_at'])) . "</i>\n\n";
+                $text .= "<i>" . date('H:i - Y/m/d', strtotime($alert['created_at'])) . "</i>\n";
+                $text .= Telegram::hr() . "\n\n";
             }
 
             // Mark as read
@@ -814,7 +840,8 @@ class ConsumerPanel
         $creditEngine = new CreditEngine();
         $credits = $creditEngine->getCredits($this->unitId);
 
-        $text = "💳 <b>موجودی اعتبار شما</b>\n\n";
+        $text = "💳 <b>اعتبار شما</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         $totalBalance = 0;
         $hasNegative = false;
@@ -837,14 +864,13 @@ class ConsumerPanel
         }
 
         if ($hasNegative) {
-            $text .= "\n⚠️ <i>شما نیاز به خرید اعتبار دارید</i>";
+            $text .= "\n⚠️ <i>برای جلوگیری از جریمه، اعتبار را شارژ کنید.</i>";
         } else {
-            $text .= "\n✅ <i>موجودی شما مثبت است</i>";
+            $text .= "\n✅ <i>موجودی شما در وضعیت خوب است.</i>";
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🛒 خرید اعتبار', 'con_buy_credit')],
-            [Telegram::inlineButton('💰 فروش اعتبار', 'con_sell_credit')],
+            [Telegram::inlineButton('🛒 خرید اعتبار', 'con_buy_credit'), Telegram::inlineButton('💰 فروش اعتبار', 'con_sell_credit')],
             [Telegram::inlineButton('🔙 بازگشت', 'con_home')]
         ]);
 
@@ -997,13 +1023,18 @@ class ConsumerPanel
             ];
         }
 
-        $text = "💰 <b>هزینه‌های ماه جاری</b>\n\n";
+        $text = "💵 <b>هزینه‌های ماه جاری</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         $totalCost = 0;
 
+        $consMap = [];
         foreach ($consumption as $cons) {
-            $type = $cons['metric_type'];
-            $total = (float)$cons['total'];
+            $consMap[(string)$cons['metric_type']] = (float)$cons['total'];
+        }
+
+        foreach (['water', 'electricity', 'gas'] as $type) {
+            $total = (float)($consMap[$type] ?? 0);
 
             $icon = match ($type) {
                 'water' => '💧',
@@ -1027,14 +1058,17 @@ class ConsumerPanel
 
                 $percent = ($total / $limitInfo['limit']) * 100;
 
+                $bar = Telegram::progressBar($percent / 100, 10);
+                $pIcon = $percent <= 70 ? '✅' : ($percent <= 100 ? '⚠️' : '🚨');
+
                 $text .= "{$icon} <b>{$name}</b>\n";
-                $text .= "   مصرف: " . round($total, 1) . " / " . round($limitInfo['limit'], 1) . "\n";
-                $text .= "   درصد مصرف: " . round($percent, 1) . "%\n";
-                $text .= "   هزینه: " . Telegram::formatPrice($cost) . "\n\n";
+                $text .= "   مصرف: <b>" . round($total, 1) . "</b> / " . round($limitInfo['limit'], 1) . "\n";
+                $text .= "   {$pIcon} {$bar} " . round($percent, 1) . "%\n";
+                $text .= "   هزینه: <b>" . Telegram::formatPrice($cost) . "</b>\n\n";
             }
         }
 
-        $text .= "━━━━━━━━━━━━━━━\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "<b>جمع کل: " . Telegram::formatPrice($totalCost) . "</b>";
 
         $keyboard = Telegram::inlineKeyboard([

@@ -64,6 +64,12 @@ class ManagerPanel
 
         $buildingName = $building[0]['name'];
 
+        $unitsCount = DB::select(
+            "SELECT COUNT(*) as c FROM units WHERE building_id = ? AND is_active = 1",
+            [$this->buildingId]
+        );
+        $unitsTotal = (int)($unitsCount[0]['c'] ?? 0);
+
         // Get unread alerts count
         $alertsCount = DB::select(
             "SELECT COUNT(*) as count
@@ -74,45 +80,49 @@ class ManagerPanel
         );
 
         $alertBadge = $alertsCount[0]['count'] > 0 ? " ({$alertsCount[0]['count']})" : "";
+        $unreadAlerts = (int)($alertsCount[0]['count'] ?? 0);
 
         // Persistent keyboard buttons (main navigation)
         $keyboard = Telegram::replyKeyboard([
             [
-                Telegram::keyboardButton('🏠 واحدها'),
-                Telegram::keyboardButton('📊 مصرف لحظه‌ای')
+                Telegram::keyboardButton('واحدها 🏠'),
+                Telegram::keyboardButton('مصرف لحظه‌ای 📊')
             ],
             [
-                Telegram::keyboardButton('🌍 کربن'),
-                Telegram::keyboardButton('⚠️ هشدارها')
+                Telegram::keyboardButton('هشدارها ⚠️'),
+                Telegram::keyboardButton('کربن 🌍')
             ],
             [
-                Telegram::keyboardButton('💰 اعتبارات'),
-                Telegram::keyboardButton('🧪 شبیه‌سازی')
+                Telegram::keyboardButton('اعتبارات 💰'),
+                Telegram::keyboardButton('شبیه‌سازی 🧪')
             ],
             [
-                Telegram::keyboardButton('🏠 منوی اصلی')
+                Telegram::keyboardButton('منوی اصلی 🏠')
             ],
             [
-                Telegram::keyboardButton('📚 راهنما'),
-                Telegram::keyboardButton('🆔 شناسه من')
+                Telegram::keyboardButton('راهنما 📚'),
+                Telegram::keyboardButton('شناسه من 🆔')
             ]
         ]);
 
-        $text = "🏢 <b>پنل مدیریت: {$buildingName}</b>\n\nخوش آمدید\n\n" .
-            "از دکمه‌های زیر برای دسترسی به اطلاعات ساختمان استفاده کنید.";
+        $text = "🏢 <b>داشبورد مدیریت ساختمان</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📍 ساختمان: <b>{$buildingName}</b>\n";
+        $text .= "🏠 واحدهای فعال: <b>{$unitsTotal}</b>\n";
+        $text .= "🔔 هشدارهای خوانده‌نشده: <b>{$unreadAlerts}</b>{$alertBadge}\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "یک بخش را انتخاب کنید:";
 
         // Quick action inline buttons (glass buttons)
         $inlineButtons = [
-            [Telegram::inlineButton('🏠 واحدها', 'mgr_units')],
-            [Telegram::inlineButton('📊 مصرف لحظه‌ای', 'mgr_live_consumption')],
-            [Telegram::inlineButton('🌍 کربن', 'mgr_carbon')],
-            [Telegram::inlineButton('💰 اعتبارات', 'mgr_credits')],
-            [Telegram::inlineButton('🧪 شبیه‌سازی ساختمان', 'mgr_sim_now')],
-            [Telegram::inlineButton('🔄 محاسبه مجدد اعتبارات', 'mgr_recalculate_credits')],
+            [Telegram::inlineButton('واحدها 🏠', 'mgr_units'), Telegram::inlineButton('مصرف امروز 📊', 'mgr_live_consumption')],
+            [Telegram::inlineButton('کربن 🌍', 'mgr_carbon'), Telegram::inlineButton('اعتبارات 💳', 'mgr_credits')],
+            [Telegram::inlineButton('شبیه‌سازی ساختمان 🧪', 'mgr_sim_now')],
+            [Telegram::inlineButton('محاسبه مجدد اعتبارات 🔄', 'mgr_recalculate_credits')],
         ];
 
-        if ($alertsCount[0]['count'] > 0) {
-            array_unshift($inlineButtons, [Telegram::inlineButton("⚠️ هشدارها{$alertBadge}", 'mgr_alerts')]);
+        if ($unreadAlerts > 0) {
+            array_unshift($inlineButtons, [Telegram::inlineButton("هشدارها{$alertBadge} (اقدام) 🚨", 'mgr_alerts')]);
         }
 
         $inlineKeyboard = Telegram::inlineKeyboard($inlineButtons);
@@ -123,7 +133,7 @@ class ManagerPanel
         }
 
         $this->respond($text, $keyboard, true);
-        $this->respond("⚡ <b>عملیات سریع:</b>", $inlineKeyboard, true);
+        $this->respond("⚡ <b>عملیات سریع</b>\n" . Telegram::hr(), $inlineKeyboard, true);
     }
 
     public function simulateNow(): void
@@ -141,19 +151,19 @@ class ManagerPanel
         } catch (\Throwable $e) {
         }
 
-        $text = "🧪 ✅ <b>شبیه‌سازی ساختمان انجام شد</b>\n\n";
-        $text .= "تعداد واحدهای پردازش‌شده: <b>{$unitsProcessed}</b>\n";
+        $text = "🧪 ✅ <b>شبیه‌سازی ساختمان انجام شد</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "🏠 واحدهای پردازش‌شده: <b>{$unitsProcessed}</b>\n";
         if ($alertsCreated > 0) {
-            $text .= "⚠️ هشدارهای جدید: <b>{$alertsCreated}</b>\n";
+            $text .= "🚨 هشدارهای جدید: <b>{$alertsCreated}</b>\n";
         }
 
         $this->respond(
             $text,
             Telegram::inlineKeyboard([
-                [Telegram::inlineButton('📊 مصرف لحظه‌ای', 'mgr_live_consumption')],
-                [Telegram::inlineButton('🌍 کربن', 'mgr_carbon')],
-                [Telegram::inlineButton('⚠️ هشدارها', 'mgr_alerts')],
-                [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
+                [Telegram::inlineButton('مصرف امروز 📊', 'mgr_live_consumption'), Telegram::inlineButton('کربن 🌍', 'mgr_carbon')],
+                [Telegram::inlineButton('هشدارها 🚨', 'mgr_alerts'), Telegram::inlineButton('واحدها 🏠', 'mgr_units')],
+                [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]
             ])
         );
     }
@@ -169,10 +179,12 @@ class ManagerPanel
             default => '🌍 کربن ساختمان امروز'
         };
 
-        $text = "{$title}\n\n";
+        $text = "{$title}\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "⚡ برق: <b>" . round((float)$buildingCarbon['electricity_kg'], 2) . "</b> kgCO₂e\n";
         $text .= "🔥 گاز: <b>" . round((float)$buildingCarbon['gas_kg'], 2) . "</b> kgCO₂e\n";
-        $text .= "💧 آب: <b>" . round((float)$buildingCarbon['water_kg'], 3) . "</b> kgCO₂e\n\n";
+        $text .= "💧 آب: <b>" . round((float)$buildingCarbon['water_kg'], 3) . "</b> kgCO₂e\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "📌 مجموع ساختمان: <b>" . round((float)$buildingCarbon['total_kg'], 2) . "</b> kgCO₂e\n\n";
 
         $condition = match ($period) {
@@ -220,21 +232,24 @@ class ManagerPanel
         $top = array_slice($unitTotals, 0, 5);
 
         if (!empty($top)) {
-            $text .= "🏠 <b>Top 5 واحد پرکربن</b>\n";
+            $text .= "🏆 <b>۵ واحد پرکربن</b>\n";
+            $maxKg = max(array_map(static fn($x) => (float)($x['kg'] ?? 0), $top));
             foreach ($top as $t) {
-                $text .= "• {$t['label']} — <b>" . round((float)$t['kg'], 2) . "</b> kgCO₂e\n";
+                $kg = (float)($t['kg'] ?? 0);
+                $bar = Telegram::progressBar($maxKg > 0 ? ($kg / $maxKg) : 0.0, 10);
+                $text .= "• {$bar} {$t['label']} — <b>" . round($kg, 2) . "</b> kgCO₂e\n";
             }
             $text .= "\n";
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 بروزرسانی', 'mgr_carbon')],
+            [Telegram::inlineButton('بروزرسانی 🔄', 'mgr_carbon')],
             [
-                Telegram::inlineButton('📅 امروز', 'mgr_carbon'),
-                Telegram::inlineButton('📆 هفته', 'mgr_carbon_week')
+                Telegram::inlineButton('امروز 📅', 'mgr_carbon'),
+                Telegram::inlineButton('هفته 📆', 'mgr_carbon_week')
             ],
-            [Telegram::inlineButton('📈 ۳۰ روز اخیر', 'mgr_carbon_month')],
-            [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
+            [Telegram::inlineButton('۳۰ روز اخیر 📈', 'mgr_carbon_month')],
+            [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -248,30 +263,33 @@ class ManagerPanel
         $units = Unit::getByBuilding($this->buildingId);
 
         if (empty($units)) {
-            $text = "هیچ واحدی ثبت نشده است.";
-            $keyboard = Telegram::inlineKeyboard([[Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]]);
+            $text = "🏠 <b>واحدها</b>\n" . Telegram::hr() . "\n\n";
+            $text .= "هیچ واحد فعالی برای این ساختمان ثبت نشده است.";
+            $keyboard = Telegram::inlineKeyboard([[Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]]);
         } else {
-            $text = "🏠 <b>لیست واحدها</b>\n\n";
+            $text = "🏠 <b>واحدهای ساختمان</b>\n";
+            $text .= Telegram::hr() . "\n\n";
 
             $buttons = [];
             foreach ($units as $unit) {
                 $consumption = Unit::getCurrentConsumption($unit['id'], 'today');
 
-                $text .= "📍 <b>طبقه {$unit['floor_number']} - {$unit['unit_name']}</b>\n";
-                $text .= "   مالک: " . ($unit['owner_name'] ?? 'نامشخص') . "\n";
-                $text .= "   💧 آب: " . round((float)$consumption['water'], 1) . " لیتر\n";
-                $text .= "   ⚡ برق: " . round((float)$consumption['electricity'], 1) . " کیلووات\n";
-                $text .= "   🔥 گاز: " . round((float)$consumption['gas'], 1) . " مترمکعب\n\n";
+                $text .= "📍 <b>طبقه {$unit['floor_number']} · واحد {$unit['unit_name']}</b>\n";
+                $text .= "👤 مالک: " . ($unit['owner_name'] ?? 'نامشخص') . "\n";
+                $text .= "💧 آب: <b>" . round((float)$consumption['water'], 1) . "</b> لیتر\n";
+                $text .= "⚡ برق: <b>" . round((float)$consumption['electricity'], 1) . "</b> کیلووات\n";
+                $text .= "🔥 گاز: <b>" . round((float)$consumption['gas'], 1) . "</b> مترمکعب\n";
+                $text .= Telegram::hr() . "\n\n";
 
                 $buttons[] = [
                     Telegram::inlineButton(
-                        "طبقه {$unit['floor_number']} - {$unit['unit_name']}",
+                        "🔎 طبقه {$unit['floor_number']} · {$unit['unit_name']}",
                         'mgr_unit_' . $unit['id']
                     )
                 ];
             }
 
-            $buttons[] = [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')];
+            $buttons[] = [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')];
 
             $keyboard = Telegram::inlineKeyboard($buttons);
         }
@@ -298,7 +316,8 @@ class ManagerPanel
             [$this->buildingId]
         );
 
-        $text = "📊 <b>مصرف امروز</b>\n\n";
+        $text = "📊 <b>مصرف امروز (خلاصه)</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         $currentUnit = null;
         $unitData = [];
@@ -319,14 +338,15 @@ class ManagerPanel
 
         foreach ($unitData as $unitName => $data) {
             $text .= "🏠 <b>{$unitName}</b>\n";
-            $text .= "   💧 آب: " . round((float)$data['water'], 1) . "\n";
-            $text .= "   ⚡ برق: " . round((float)$data['electricity'], 1) . "\n";
-            $text .= "   🔥 گاز: " . round((float)$data['gas'], 1) . "\n\n";
+            $text .= "💧 آب: <b>" . round((float)$data['water'], 1) . "</b>\n";
+            $text .= "⚡ برق: <b>" . round((float)$data['electricity'], 1) . "</b>\n";
+            $text .= "🔥 گاز: <b>" . round((float)$data['gas'], 1) . "</b>\n";
+            $text .= Telegram::hr() . "\n\n";
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 بروزرسانی', 'mgr_live_consumption')],
-            [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
+            [Telegram::inlineButton('بروزرسانی 🔄', 'mgr_live_consumption')],
+            [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -348,9 +368,10 @@ class ManagerPanel
         );
 
         if (empty($alerts)) {
-            $text = "✅ هشداری وجود ندارد";
+            $text = "✅ <b>هشدارهای ساختمان</b>\n" . Telegram::hr() . "\n\n";
+            $text .= "فعلاً هشداری ثبت نشده است.";
         } else {
-            $text = "⚠️ <b>هشدارهای ساختمان</b>\n\n";
+            $text = "🚨 <b>هشدارهای ساختمان</b>\n" . Telegram::hr() . "\n\n";
 
             foreach ($alerts as $alert) {
                 $icon = match ($alert['severity']) {
@@ -359,18 +380,19 @@ class ManagerPanel
                     default => 'ℹ️'
                 };
 
-                $status = $alert['is_read'] ? '✓' : '●';
+                $status = $alert['is_read'] ? '✅' : '🟠';
 
                 $text .= "{$status} {$icon} <b>{$alert['title']}</b>\n";
-                $text .= "   واحد: طبقه {$alert['floor_number']} - {$alert['unit_name']}\n";
-                $text .= "   {$alert['message']}\n";
-                $text .= "   زمان: " . date('H:i - Y/m/d', strtotime($alert['created_at'])) . "\n\n";
+                $text .= "🏠 واحد: طبقه {$alert['floor_number']} · {$alert['unit_name']}\n";
+                $text .= "📝 {$alert['message']}\n";
+                $text .= "⏱ " . date('H:i - Y/m/d', strtotime($alert['created_at'])) . "\n";
+                $text .= Telegram::hr() . "\n\n";
             }
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('✓ علامت‌گذاری همه', 'mgr_mark_all_read')],
-            [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
+            [Telegram::inlineButton('علامت‌گذاری همه به‌عنوان خوانده‌شده ✅', 'mgr_mark_all_read')],
+            [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -394,7 +416,8 @@ class ManagerPanel
             [$this->buildingId]
         );
 
-        $text = "💳 <b>وضعیت اعتبارات واحدها</b>\n\n";
+        $text = "💳 <b>وضعیت اعتبارات واحدها</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         $unitData = [];
         foreach ($credits as $credit) {
@@ -408,22 +431,22 @@ class ManagerPanel
         }
 
         foreach ($unitData as $unitName => $balances) {
-            $text .= "🏠 {$unitName}\n";
+            $text .= "🏠 <b>{$unitName}</b>\n";
 
             foreach (['water' => '💧', 'electricity' => '⚡', 'gas' => '🔥'] as $type => $icon) {
                 $balance = $balances[$type] ?? 0;
                 $status = $balance >= 0 ? '✅' : '⚠️';
                 $sign = $balance >= 0 ? '+' : '';
 
-                $text .= "   {$icon} {$status} {$sign}" . round((float)$balance, 1) . "\n";
+                $text .= "{$icon} {$status} <b>{$sign}" . round((float)$balance, 1) . "</b>\n";
             }
 
-            $text .= "\n";
+            $text .= Telegram::hr() . "\n\n";
         }
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 محاسبه مجدد', 'mgr_recalculate_credits')],
-            [Telegram::inlineButton('🔙 بازگشت', 'mgr_home')]
+            [Telegram::inlineButton('محاسبه مجدد 🔄', 'mgr_recalculate_credits')],
+            [Telegram::inlineButton('بازگشت 🔙', 'mgr_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -444,7 +467,7 @@ class ManagerPanel
             $this->respond(
                 "واحد یافت نشد.",
                 Telegram::inlineKeyboard([
-                    [Telegram::inlineButton('🔙 بازگشت', 'mgr_units')]
+                    [Telegram::inlineButton('بازگشت 🔙', 'mgr_units')]
                 ])
             );
             return;
@@ -458,22 +481,28 @@ class ManagerPanel
             [(int)$u['id']]
         );
 
-        $text = "🏠 <b>جزئیات واحد</b>\n\n";
-        $text .= "طبقه: {$u['floor_number']}\n";
-        $text .= "واحد: {$u['unit_name']}\n";
-        $text .= "مالک: " . ($u['owner_name'] ?? 'نامشخص') . "\n";
-        $text .= "متراژ: {$u['area_m2']} متر\n";
-        $text .= "ساکنین: {$u['occupants_count']} نفر\n";
-        $text .= "هشدارهای خوانده‌نشده: " . ($unreadAlerts[0]['count'] ?? 0) . "\n\n";
+        $unread = (int)($unreadAlerts[0]['count'] ?? 0);
 
-        $text .= "<b>مصرف امروز:</b>\n";
-        $text .= "💧 آب: " . round((float)$today['water'], 1) . "\n";
-        $text .= "⚡ برق: " . round((float)$today['electricity'], 1) . "\n";
-        $text .= "🔥 گاز: " . round((float)$today['gas'], 1) . "\n";
+        $text = "🏠 <b>جزئیات واحد</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📍 طبقه: <b>{$u['floor_number']}</b> · واحد: <b>{$u['unit_name']}</b>\n";
+        $text .= "👤 مالک: " . ($u['owner_name'] ?? 'نامشخص') . "\n";
+        $text .= "📐 متراژ: <b>{$u['area_m2']}</b> متر\n";
+        $text .= "👥 ساکنین: <b>{$u['occupants_count']}</b> نفر\n";
+        $text .= "🔔 هشدارهای خوانده‌نشده: <b>{$unread}</b>\n";
+        $text .= Telegram::hr() . "\n";
+
+        $text .= "<b>مصرف امروز</b>\n";
+        $text .= "💧 آب: <b>" . round((float)$today['water'], 1) . "</b>\n";
+        $text .= "⚡ برق: <b>" . round((float)$today['electricity'], 1) . "</b>\n";
+        $text .= "🔥 گاز: <b>" . round((float)$today['gas'], 1) . "</b>\n";
+
+        $text .= Telegram::hr() . "\n";
+        $text .= "برای مشاهده هشدارهای مرتبط، از دکمه زیر استفاده کنید:";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('⚠️ هشدارها', 'mgr_alerts')],
-            [Telegram::inlineButton('🔙 بازگشت', 'mgr_units')]
+            [Telegram::inlineButton('هشدارها ⚠️', 'mgr_alerts')],
+            [Telegram::inlineButton('بازگشت 🔙', 'mgr_units')]
         ]);
 
         $this->respond($text, $keyboard);

@@ -101,6 +101,18 @@ class Telegram
         return $this->apiRequest('setWebhook', $data);
     }
 
+    public function deleteWebhook(bool $dropPendingUpdates = true): array
+    {
+        return $this->apiRequest('deleteWebhook', [
+            'drop_pending_updates' => $dropPendingUpdates,
+        ]);
+    }
+
+    public function getWebhookInfo(): array
+    {
+        return $this->apiRequest('getWebhookInfo');
+    }
+
     /**
      * Create inline keyboard
      */
@@ -145,6 +157,20 @@ class Telegram
         return ['remove_keyboard' => true];
     }
 
+    public static function hr(): string
+    {
+        return "━━━━━━━━━━━━━━━━━━";
+    }
+
+    public static function progressBar(float $ratio, int $width = 10): string
+    {
+        $ratio = max(0.0, min(1.0, $ratio));
+        $filled = (int)round($ratio * $width);
+        $filled = max(0, min($width, $filled));
+
+        return str_repeat('▰', $filled) . str_repeat('▱', $width - $filled);
+    }
+
     /**
      * Execute API request
      */
@@ -156,6 +182,10 @@ class Telegram
         }
 
         $ch = curl_init($this->apiUrl . $method);
+        if ($ch === false) {
+            error_log("Telegram API Error: {$method} - Failed to initialize cURL");
+            return ['ok' => false];
+        }
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -166,13 +196,13 @@ class Telegram
 
         if ($response === false) {
             $error = curl_error($ch);
-            curl_close($ch);
+            $this->closeCurlHandle($ch);
             error_log("Telegram API Error: {$method} - {$error}");
             return ['ok' => false];
         }
 
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $this->closeCurlHandle($ch);
 
         if ($httpCode !== 200) {
             error_log("Telegram API Error: {$method} - HTTP {$httpCode}");
@@ -192,6 +222,16 @@ class Telegram
         }
 
         return $decoded;
+    }
+
+    private function closeCurlHandle($ch): void
+    {
+        try {
+            if ($ch !== null) {
+                call_user_func('curl_close', $ch);
+            }
+        } catch (\Throwable $e) {
+        }
     }
 
     /**

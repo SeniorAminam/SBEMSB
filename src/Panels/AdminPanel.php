@@ -21,6 +21,7 @@ use SmartBuilding\Utils\Telegram;
 use SmartBuilding\Database\DB;
 use SmartBuilding\Services\ConsumptionAnalyzer;
 use SmartBuilding\Services\CreditEngine;
+use SmartBuilding\Services\CarbonEngine;
 use SmartBuilding\Services\DataSimulator;
 use SmartBuilding\Utils\Logger;
 
@@ -55,34 +56,57 @@ class AdminPanel
         // Persistent keyboard buttons (main navigation)
         $keyboard = Telegram::replyKeyboard([
             [
-                Telegram::keyboardButton('🏢 ساختمان‌ها'),
-                Telegram::keyboardButton('👥 کاربران')
+                Telegram::keyboardButton('گزارش 📈'),
+                Telegram::keyboardButton('هشدارها ⚠️')
             ],
             [
-                Telegram::keyboardButton('💲 قیمت‌ها'),
-                Telegram::keyboardButton('📈 گزارش')
+                Telegram::keyboardButton('کربن 🌍'),
+                Telegram::keyboardButton('کاربران 👥')
             ],
             [
-                Telegram::keyboardButton('⚙️ تنظیمات'),
-                Telegram::keyboardButton('🧪 ابزارها')
+                Telegram::keyboardButton('ساختمان‌ها 🏢'),
+                Telegram::keyboardButton('قیمت‌ها 💲')
             ],
             [
-                Telegram::keyboardButton('📚 راهنما'),
-                Telegram::keyboardButton('🆔 شناسه من')
+                Telegram::keyboardButton('تنظیمات ⚙️'),
+                Telegram::keyboardButton('ابزارها 🧪')
+            ],
+            [
+                Telegram::keyboardButton('راهنما 📚'),
+                Telegram::keyboardButton('شناسه من 🆔')
+            ],
+            [
+                Telegram::keyboardButton('منوی اصلی 🏠')
             ]
         ]);
 
-        $text = "🔧 <b>پنل مدیریت سیستم</b>\n\nخوش آمدید مدیر گرامی\n\n" .
-            "از دکمه‌های زیر برای دسترسی به بخش‌های مختلف استفاده کنید.";
+        $counts = $this->getDbCounts();
+
+        $text = "🛡️ <b>داشبورد مدیریت سیستم</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "ساختمان‌ها: <b>{$counts['buildings']}</b> 🏢\n";
+        $text .= "واحدها: <b>{$counts['units']}</b> 🏠\n";
+        $text .= "کاربران: <b>{$counts['users']}</b> 👥\n";
+        $text .= "هشدارها: <b>{$counts['alerts']}</b> ⚠️\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "یک بخش را انتخاب کنید:";
 
         // Quick action inline buttons (glass buttons)
         $inlineKeyboard = Telegram::inlineKeyboard([
             [
-                Telegram::inlineButton('🔄 بروزرسانی اعتبارات', 'admin_refresh_credits')
+                Telegram::inlineButton('ساختمان‌ها 🏢', 'admin_buildings'),
+                Telegram::inlineButton('کاربران 👥', 'admin_users')
             ],
             [
-                Telegram::inlineButton('🧪 ابزارهای ادمین', 'admin_tools')
-            ]
+                Telegram::inlineButton('گزارش سیستم 📈', 'admin_report'),
+                Telegram::inlineButton('وضعیت دیتابیس 📊', 'admin_tools_db_status')
+            ],
+            [
+                Telegram::inlineButton('هشدارها ⚠️', 'admin_alerts'),
+                Telegram::inlineButton('کربن 🌍', 'admin_carbon')
+            ],
+            [Telegram::inlineButton('بروزرسانی اعتبارات 🔄', 'admin_refresh_credits')],
+            [Telegram::inlineButton('ابزارهای ادمین 🧪', 'admin_tools')]
         ]);
 
         if ($this->contextMessageId !== null) {
@@ -91,7 +115,7 @@ class AdminPanel
         }
 
         $this->respond($text, $keyboard, true);
-        $this->respond("⚡ <b>عملیات سریع:</b>", $inlineKeyboard, true);
+        $this->respond("⚡ <b>عملیات سریع</b>\n" . Telegram::hr(), $inlineKeyboard, true);
     }
 
     /**
@@ -107,26 +131,34 @@ class AdminPanel
         );
 
         if (empty($buildings)) {
-            $text = "هیچ ساختمانی ثبت نشده است.";
+            $text = "🏢 <b>ساختمان‌ها</b>\n" . Telegram::hr() . "\n\n";
+            $text .= "هنوز ساختمانی ثبت نشده است.";
             $keyboard = Telegram::inlineKeyboard([
                 [Telegram::inlineButton('➕ افزودن ساختمان', 'admin_add_building')],
                 [Telegram::inlineButton('🔙 بازگشت', 'admin_home')]
             ]);
         } else {
-            $text = "🏢 <b>لیست ساختمان‌ها</b>\n\n";
+            $text = "🏢 <b>لیست ساختمان‌ها</b>\n";
+            $text .= Telegram::hr() . "\n\n";
 
             $buttons = [];
+            $row = [];
             foreach ($buildings as $building) {
-                $text .= "• {$building['name']}\n";
-                $text .= "  مدیر: " . ($building['manager_name'] ?? 'نامشخص') . "\n";
-                $text .= "  طبقات: {$building['total_floors']}\n\n";
+                $mgr = $building['manager_name'] ?? 'نامشخص';
+                $text .= "🏢 <b>{$building['name']}</b>\n";
+                $text .= "👤 مدیر: {$mgr}\n";
+                $text .= "🏗 طبقات: <b>{$building['total_floors']}</b>\n";
+                $text .= Telegram::hr() . "\n\n";
 
-                $buttons[] = [
-                    Telegram::inlineButton(
-                        $building['name'],
-                        'admin_building_' . $building['id']
-                    )
-                ];
+                $row[] = Telegram::inlineButton('🏢 ' . $building['name'], 'admin_building_' . $building['id']);
+                if (count($row) === 2) {
+                    $buttons[] = $row;
+                    $row = [];
+                }
+            }
+
+            if (!empty($row)) {
+                $buttons[] = $row;
             }
 
             $buttons[] = [Telegram::inlineButton('➕ افزودن ساختمان', 'admin_add_building')];
@@ -138,27 +170,318 @@ class AdminPanel
         $this->respond($text, $keyboard);
     }
 
-    public function showToolsMenu(): void
+    public function showAlerts(): void
     {
-        $text = "🧪 <b>ابزارهای ادمین</b>\n\n";
-        $text .= "از این بخش می‌توانید دیتای نمونه بسازید، شبیه‌سازی انجام دهید و وضعیت دیتابیس را ببینید.";
+        $unread = DB::select("SELECT COUNT(*) as c FROM alerts WHERE is_read = 0");
+        $unreadCount = (int)($unread[0]['c'] ?? 0);
+
+        $rows = DB::select(
+            "SELECT a.*, u.floor_number, u.unit_name, b.name as building_name
+             FROM alerts a
+             JOIN units u ON a.unit_id = u.id
+             JOIN buildings b ON u.building_id = b.id
+             ORDER BY a.created_at DESC
+             LIMIT 30"
+        );
+
+        $text = "⚠️ <b>هشدارهای سیستم</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "خوانده‌نشده: <b>{$unreadCount}</b>\n";
+        $text .= Telegram::hr() . "\n\n";
+
+        if (empty($rows)) {
+            $text .= "فعلاً هشداری ثبت نشده است.";
+        } else {
+            foreach ($rows as $a) {
+                $icon = match ($a['severity']) {
+                    'critical' => '🚨',
+                    'warning' => '⚠️',
+                    default => 'ℹ️'
+                };
+                $status = ((int)($a['is_read'] ?? 0) === 1) ? '✅' : '🟠';
+                $buildingName = (string)($a['building_name'] ?? '-');
+                $unitLabel = 'طبقه ' . ($a['floor_number'] ?? '-') . ' · واحد ' . ($a['unit_name'] ?? '-');
+                $createdAt = (string)($a['created_at'] ?? '');
+
+                $text .= "{$status} {$icon} <b>{$a['title']}</b>\n";
+                $text .= "🏢 {$buildingName} / {$unitLabel}\n";
+                $text .= "📝 {$a['message']}\n";
+                if ($createdAt !== '') {
+                    $text .= "⏱ " . date('H:i - Y/m/d', strtotime($createdAt)) . "\n";
+                }
+                $text .= Telegram::hr() . "\n\n";
+            }
+        }
+
+        $buttons = [];
+        if ($unreadCount > 0) {
+            $buttons[] = [Telegram::inlineButton('علامت‌گذاری همه خوانده‌شده ✅', 'admin_mark_all_alerts_read')];
+        }
+        $buttons[] = [Telegram::inlineButton('بروزرسانی 🔄', 'admin_alerts')];
+        $buttons[] = [Telegram::inlineButton('بازگشت 🔙', 'admin_home')];
+
+        $this->respond($text, Telegram::inlineKeyboard($buttons));
+    }
+
+    public function markAllAlertsRead(): void
+    {
+        DB::execute("UPDATE alerts SET is_read = 1, read_at = NOW() WHERE is_read = 0");
+    }
+
+    public function showSystemCarbon(string $period = 'today'): void
+    {
+        $engine = new CarbonEngine();
+        $carbon = $this->getSystemCarbonBreakdown($period, $engine);
+
+        $title = match ($period) {
+            'week' => 'کربن سیستم (۷ روز اخیر) 🌍',
+            'month' => 'کربن سیستم (۳۰ روز اخیر) 🌍',
+            default => 'کربن سیستم امروز 🌍'
+        };
+
+        $text = "<b>{$title}</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "برق: <b>" . round((float)$carbon['electricity_kg'], 2) . "</b> kgCO₂e ⚡\n";
+        $text .= "گاز: <b>" . round((float)$carbon['gas_kg'], 2) . "</b> kgCO₂e 🔥\n";
+        $text .= "آب: <b>" . round((float)$carbon['water_kg'], 3) . "</b> kgCO₂e 💧\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "مجموع: <b>" . round((float)$carbon['total_kg'], 2) . "</b> kgCO₂e\n";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🏗️ ساخت دیتای نمونه', 'admin_tools_seed')],
-            [Telegram::inlineButton('🎛 پریست‌های شبیه‌سازی', 'admin_tools_presets')],
-            [Telegram::inlineButton('🧪 شبیه‌سازی (کل سیستم)', 'admin_tools_simulate')],
-            [Telegram::inlineButton('📊 وضعیت دیتابیس', 'admin_tools_db_status')],
-            [Telegram::inlineButton('🎁 پاداش کم‌مصرف‌ها', 'admin_tools_reward_low')],
-            [Telegram::inlineButton('🔙 بازگشت', 'admin_home')],
+            [Telegram::inlineButton('بروزرسانی 🔄', 'admin_carbon')],
+            [
+                Telegram::inlineButton('امروز 📅', 'admin_carbon'),
+                Telegram::inlineButton('هفته 📆', 'admin_carbon_week')
+            ],
+            [Telegram::inlineButton('۳۰ روز اخیر 📈', 'admin_carbon_month')],
+            [Telegram::inlineButton('بازگشت 🔙', 'admin_home')],
         ]);
 
         $this->respond($text, $keyboard);
     }
 
+    public function showResetAllConfirm(): void
+    {
+        $text = "⚠️ <b>تایید عملیات</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "این عملیات همه داده‌های سیستم را پاک می‌کند (به‌جز کاربران ادمین).";
+
+        $keyboard = Telegram::inlineKeyboard([
+            [Telegram::inlineButton('تایید می‌کنم ✅', 'admin_tools_reset_all_run')],
+            [Telegram::inlineButton('لغو ❌', 'admin_tools')],
+        ]);
+
+        $this->respond($text, $keyboard);
+    }
+
+    public function resetAllData(): void
+    {
+        try {
+            DB::beginTransaction();
+
+            DB::execute("SET FOREIGN_KEY_CHECKS = 0");
+            DB::execute("TRUNCATE TABLE consumption_readings");
+            DB::execute("TRUNCATE TABLE consumption_limits");
+            DB::execute("TRUNCATE TABLE unit_twin_states");
+            DB::execute("TRUNCATE TABLE energy_credits");
+            DB::execute("TRUNCATE TABLE credit_transactions");
+            DB::execute("TRUNCATE TABLE alerts");
+            DB::execute("TRUNCATE TABLE monthly_invoices");
+            DB::execute("TRUNCATE TABLE units");
+            DB::execute("TRUNCATE TABLE buildings");
+            DB::execute("DELETE FROM users WHERE role != 'admin'");
+            DB::execute("UPDATE system_settings SET setting_value = '0' WHERE setting_key = 'runtime_last_update_id'");
+            DB::execute("SET FOREIGN_KEY_CHECKS = 1");
+
+            DB::commit();
+
+            $this->respond(
+                "✅ <b>ریست کامل انجام شد</b>\n" . Telegram::hr() . "\n" .
+                "اکنون سیستم بدون داده است.",
+                Telegram::inlineKeyboard([
+                    [Telegram::inlineButton('وضعیت دیتابیس 📊', 'admin_tools_db_status')],
+                    [Telegram::inlineButton('بازگشت 🔙', 'admin_home')],
+                ])
+            );
+        } catch (\Throwable $e) {
+            DB::rollback();
+            try {
+                DB::execute("SET FOREIGN_KEY_CHECKS = 1");
+            } catch (\Throwable $e2) {
+            }
+
+            Logger::error('admin_reset_all_failed', $e->getMessage(), ['chat_id' => $this->chatId]);
+            $this->respond(
+                "❌ خطا در ریست کامل: " . $e->getMessage(),
+                Telegram::inlineKeyboard([
+                    [Telegram::inlineButton('بازگشت 🔙', 'admin_tools')],
+                ])
+            );
+        }
+    }
+
+    private function getSystemCarbonBreakdown(string $period, CarbonEngine $engine): array
+    {
+        $condition = match ($period) {
+            'week' => "timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+            'month' => "timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+            default => "DATE(timestamp) = CURDATE()",
+        };
+
+        $rows = DB::select(
+            "SELECT metric_type, SUM(value) as total
+             FROM consumption_readings
+             WHERE {$condition}
+             GROUP BY metric_type"
+        );
+
+        $consumption = ['water' => 0.0, 'electricity' => 0.0, 'gas' => 0.0];
+        foreach ($rows as $r) {
+            $type = (string)($r['metric_type'] ?? '');
+            if (isset($consumption[$type])) {
+                $consumption[$type] = (float)($r['total'] ?? 0);
+            }
+        }
+
+        $factors = $engine->getFactors();
+        $kgWater = $consumption['water'] * (float)$factors['water'];
+        $kgElectricity = $consumption['electricity'] * (float)$factors['electricity'];
+        $kgGas = $consumption['gas'] * (float)$factors['gas'];
+        $total = $kgWater + $kgElectricity + $kgGas;
+
+        return [
+            'water_kg' => (float)round($kgWater, 3),
+            'electricity_kg' => (float)round($kgElectricity, 3),
+            'gas_kg' => (float)round($kgGas, 3),
+            'total_kg' => (float)round($total, 3),
+        ];
+    }
+
+    public function showToolsMenu(): void
+    {
+        $text = "🧪 <b>ابزارهای ادمین</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "این بخش برای دمو/تست سریع سیستم است.";
+
+        $keyboard = Telegram::inlineKeyboard([
+            [Telegram::inlineButton('ساخت دیتای نمونه 🏗️', 'admin_tools_seed')],
+            [Telegram::inlineButton('پریست‌های شبیه‌سازی 🎛', 'admin_tools_presets')],
+            [Telegram::inlineButton('شبیه‌سازی (کل سیستم) 🧪', 'admin_tools_simulate')],
+            [Telegram::inlineButton('وضعیت دیتابیس 📊', 'admin_tools_db_status')],
+            [Telegram::inlineButton('پاداش کم‌مصرف‌ها 🎁', 'admin_tools_reward_low')],
+            [Telegram::inlineButton('ریست همه داده‌ها ♻️', 'admin_tools_reset_all_confirm')],
+            [Telegram::inlineButton('مدیریت وبهوک 🌐', 'admin_webhook_menu')],
+            [Telegram::inlineButton('بازگشت 🔙', 'admin_home')],
+        ]);
+
+        $this->respond($text, $keyboard);
+    }
+
+    public function showWebhookMenu(): void
+    {
+        $text = "🌐 <b>مدیریت وبهوک</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "برای اجرای سریع روی XAMPP/لوکال، معمولاً Polling پیشنهاد می‌شود.\n";
+        $text .= "اگر وبهوک می‌خواهید، ابتدا URL و Secret را در .env تنظیم کنید.";
+
+        $keyboard = Telegram::inlineKeyboard([
+            [Telegram::inlineButton('ℹ️ وضعیت وبهوک', 'admin_webhook_info')],
+            [Telegram::inlineButton('✅ تنظیم وبهوک از .env', 'admin_webhook_set')],
+            [Telegram::inlineButton('🗑 حذف وبهوک (خاموش)', 'admin_webhook_delete')],
+            [Telegram::inlineButton('🔙 بازگشت', 'admin_tools')],
+        ]);
+
+        $this->respond($text, $keyboard);
+    }
+
+    public function webhookInfo(): void
+    {
+        $result = $this->telegram->getWebhookInfo();
+
+        $info = is_array($result['result'] ?? null) ? $result['result'] : [];
+        $url = (string)($info['url'] ?? '');
+        $pending = (int)($info['pending_update_count'] ?? 0);
+        $lastErr = (string)($info['last_error_message'] ?? '');
+
+        $text = "ℹ️ <b>وضعیت وبهوک</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "URL: <code>" . ($url !== '' ? $url : '-') . "</code>\n";
+        $text .= "Pending Updates: <b>{$pending}</b>\n";
+        if ($lastErr !== '') {
+            $text .= Telegram::hr() . "\n";
+            $text .= "آخرین خطا: {$lastErr}\n";
+        }
+
+        $this->respond(
+            $text,
+            Telegram::inlineKeyboard([
+                [Telegram::inlineButton('🔄 بروزرسانی', 'admin_webhook_info')],
+                [Telegram::inlineButton('🔙 بازگشت', 'admin_webhook_menu')],
+            ])
+        );
+    }
+
+    public function webhookSetFromEnv(): void
+    {
+        $url = (string)($_ENV['TELEGRAM_WEBHOOK_URL'] ?? '');
+        $secret = (string)($_ENV['TELEGRAM_WEBHOOK_SECRET'] ?? '');
+
+        if ($url === '') {
+            $text = "❌ <b>وبهوک تنظیم نشد</b>\n";
+            $text .= Telegram::hr() . "\n";
+            $text .= "متغیر <code>TELEGRAM_WEBHOOK_URL</code> در .env خالی است.";
+            $this->respond($text, Telegram::inlineKeyboard([[Telegram::inlineButton('🔙 بازگشت', 'admin_webhook_menu')]]));
+            return;
+        }
+
+        $result = $this->telegram->setWebhook($url, $secret);
+
+        $ok = (bool)($result['ok'] ?? false);
+        $desc = (string)($result['description'] ?? '');
+
+        $text = ($ok ? "✅ <b>وبهوک تنظیم شد</b>\n" : "❌ <b>وبهوک تنظیم نشد</b>\n");
+        $text .= Telegram::hr() . "\n";
+        $text .= "URL: <code>{$url}</code>\n";
+        if ($desc !== '') {
+            $text .= "نتیجه: {$desc}\n";
+        }
+
+        $this->respond(
+            $text,
+            Telegram::inlineKeyboard([
+                [Telegram::inlineButton('ℹ️ وضعیت وبهوک', 'admin_webhook_info')],
+                [Telegram::inlineButton('🔙 بازگشت', 'admin_webhook_menu')],
+            ])
+        );
+    }
+
+    public function webhookDelete(): void
+    {
+        $result = $this->telegram->deleteWebhook(true);
+
+        $ok = (bool)($result['ok'] ?? false);
+        $desc = (string)($result['description'] ?? '');
+
+        $text = ($ok ? "🗑 ✅ <b>وبهوک حذف شد</b>\n" : "❌ <b>حذف وبهوک انجام نشد</b>\n");
+        $text .= Telegram::hr() . "\n";
+        if ($desc !== '') {
+            $text .= "نتیجه: {$desc}\n";
+        }
+
+        $this->respond(
+            $text,
+            Telegram::inlineKeyboard([
+                [Telegram::inlineButton('ℹ️ وضعیت وبهوک', 'admin_webhook_info')],
+                [Telegram::inlineButton('🔙 بازگشت', 'admin_webhook_menu')],
+            ])
+        );
+    }
+
     public function showSimulationPresetsMenu(): void
     {
-        $text = "🎛 <b>پریست‌های شبیه‌سازی</b>\n\n";
-        $text .= "این گزینه‌ها وضعیت دیجیتال‌توئین (سناریو/فصل/اکو/دستگاه‌ها) و تعداد نفرات را تغییر می‌دهند و سپس یک مرحله شبیه‌سازی اجرا می‌کنند.";
+        $text = "🎛 <b>پریست‌های شبیه‌سازی</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "هر پریست: (۱) تغییر وضعیت دیجیتال‌توئین، (۲) اجرای یک مرحله شبیه‌سازی.";
 
         $keyboard = Telegram::inlineKeyboard([
             [Telegram::inlineButton('👥 مهمان (افزایش نفرات)', 'admin_tools_preset_guest')],
@@ -368,13 +691,15 @@ class AdminPanel
     {
         $counts = $this->getDbCounts();
 
-        $text = "🏗️ <b>ساخت دیتای نمونه</b>\n\n";
-        $text .= "آمار فعلی:\n";
+        $text = "🏗️ <b>ساخت دیتای نمونه</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📌 آمار فعلی سیستم:\n";
         $text .= "🏢 ساختمان‌ها: <b>{$counts['buildings']}</b>\n";
         $text .= "🏠 واحدها: <b>{$counts['units']}</b>\n";
         $text .= "👥 کاربران: <b>{$counts['users']}</b>\n";
-        $text .= "📈 قرائت‌ها: <b>{$counts['readings']}</b>\n\n";
-        $text .= "اگر دیتایی وجود دارد، پیشنهاد می‌شود ریست کامل انجام دهید.";
+        $text .= "📈 قرائت‌ها: <b>{$counts['readings']}</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "اگر دیتا دارید و می‌خواهید دمو تمیز باشد، «ریست کامل» بهتر است.";
 
         $keyboard = Telegram::inlineKeyboard([
             [Telegram::inlineButton('➕ ساخت (فقط اگر دیتابیس خالی است)', 'admin_tools_seed_safe')],
@@ -387,8 +712,9 @@ class AdminPanel
 
     public function showSeedResetConfirm(): void
     {
-        $text = "⚠️ <b>هشدار</b>\n\n";
-        $text .= "این عملیات تمام داده‌های سیستم (به‌جز کاربران ادمین) را حذف می‌کند و دیتای نمونه جدید می‌سازد.";
+        $text = "⚠️ <b>تایید عملیات</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "این عملیات همه داده‌ها (به‌جز ادمین‌ها) را پاک می‌کند و دیتای نمونه جدید می‌سازد.";
 
         $keyboard = Telegram::inlineKeyboard([
             [Telegram::inlineButton('✅ تایید می‌کنم', 'admin_tools_seed_reset_run')],
@@ -468,7 +794,8 @@ class AdminPanel
     {
         $counts = $this->getDbCounts();
 
-        $text = "📊 <b>وضعیت دیتابیس</b>\n\n";
+        $text = "📊 <b>وضعیت دیتابیس</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "🏢 ساختمان‌ها: <b>{$counts['buildings']}</b>\n";
         $text .= "🏠 واحدها: <b>{$counts['units']}</b>\n";
         $text .= "👥 کاربران: <b>{$counts['users']}</b>\n";
@@ -732,13 +1059,14 @@ class AdminPanel
              LIMIT 30"
         );
 
-        $text = "⏳ <b>مصرف‌کنندگان بدون واحد</b>\n\n";
+        $text = "⏳ <b>مصرف‌کنندگان بدون واحد</b>\n" . Telegram::hr() . "\n\n";
         if (empty($users)) {
             $text .= "همه مصرف‌کنندگان واحد دارند.";
         } else {
             foreach ($users as $u) {
-                $text .= "• " . ($u['first_name'] ?? 'کاربر') . "\n";
-                $text .= "  شناسه: " . ($u['telegram_id'] ?? '-') . "\n\n";
+                $text .= "👤 <b>" . ($u['first_name'] ?? 'کاربر') . "</b>\n";
+                $text .= "🆔 " . ($u['telegram_id'] ?? '-') . "\n";
+                $text .= Telegram::hr() . "\n\n";
             }
         }
 
@@ -761,13 +1089,14 @@ class AdminPanel
              LIMIT 30"
         );
 
-        $text = "⏳ <b>مدیران بدون ساختمان</b>\n\n";
+        $text = "⏳ <b>مدیران بدون ساختمان</b>\n" . Telegram::hr() . "\n\n";
         if (empty($users)) {
             $text .= "همه مدیران ساختمان تخصیص دارند.";
         } else {
             foreach ($users as $u) {
-                $text .= "• " . ($u['first_name'] ?? 'کاربر') . "\n";
-                $text .= "  شناسه: " . ($u['telegram_id'] ?? '-') . "\n\n";
+                $text .= "👤 <b>" . ($u['first_name'] ?? 'کاربر') . "</b>\n";
+                $text .= "🆔 " . ($u['telegram_id'] ?? '-') . "\n";
+                $text .= Telegram::hr() . "\n\n";
             }
         }
 
@@ -812,22 +1141,28 @@ class AdminPanel
             default => (string)$u['role']
         };
 
-        $text = "👤 <b>مدیریت کاربر</b>\n\n";
+        $text = "👤 <b>پروفایل کاربر</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "نام: <b>" . ($u['first_name'] ?? '-') . "</b>\n";
         if (!empty($u['username'])) {
             $text .= "یوزرنیم: @" . $u['username'] . "\n";
         }
         $text .= "نقش: <b>{$roleName}</b>\n";
-        $text .= "شناسه: <code>" . ($u['telegram_id'] ?? '-') . "</code>\n\n";
+        $text .= "شناسه: <code>" . ($u['telegram_id'] ?? '-') . "</code>\n";
+        $text .= Telegram::hr() . "\n";
 
-        $text .= "تخصیص‌ها:\n";
-        $text .= "• ساختمان: " . ($u['building_name'] ?? '-') . "\n";
+        $text .= "📌 <b>تخصیص‌ها</b>\n";
+        $text .= "🏢 ساختمان: <b>" . ($u['building_name'] ?? '-') . "</b>\n";
         if (!empty($u['unit_id'])) {
             $unitLabel = 'طبقه ' . ($u['floor_number'] ?? '-') . ' - ' . ($u['unit_name'] ?? '-');
-            $text .= "• واحد: " . ($u['unit_building_name'] ?? '-') . " / {$unitLabel}\n";
+            $text .= "🏠 واحد: <b>" . ($u['unit_building_name'] ?? '-') . "</b> / {$unitLabel}\n";
         } else {
-            $text .= "• واحد: -\n";
+            $text .= "🏠 واحد: -\n";
         }
+
+        $text .= Telegram::hr() . "\n";
+
+        $text .= "🧩 <b>تغییر نقش</b> (با احتیاط)";
 
         $buttons = [
             [
@@ -878,7 +1213,8 @@ class AdminPanel
     {
         $buildings = DB::select("SELECT id, name FROM buildings WHERE is_active = 1 ORDER BY name");
 
-        $text = "🏢 <b>تخصیص ساختمان به مدیر</b>\n\n";
+        $text = "🏢 <b>تخصیص ساختمان به مدیر</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "یک ساختمان را انتخاب کنید:";
 
         $buttons = [];
@@ -927,7 +1263,8 @@ class AdminPanel
     {
         $buildings = DB::select("SELECT id, name FROM buildings WHERE is_active = 1 ORDER BY name");
 
-        $text = "🏠 <b>تخصیص واحد به مصرف‌کننده</b>\n\n";
+        $text = "🏠 <b>تخصیص واحد به مصرف‌کننده</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "ابتدا ساختمان را انتخاب کنید:";
 
         $buttons = [];
@@ -956,7 +1293,8 @@ class AdminPanel
             [$buildingId, $userId]
         );
 
-        $text = "🏠 <b>انتخاب واحد</b>\n\n";
+        $text = "🏠 <b>انتخاب واحد</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "ساختمان: <b>" . $building[0]['name'] . "</b>\n\n";
 
         if (empty($units)) {
@@ -1118,7 +1456,9 @@ class AdminPanel
              GROUP BY role"
         );
 
-        $text = "👥 <b>آمار کاربران</b>\n\n";
+        $text = "👥 <b>مدیریت کاربران</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📊 <b>آمار کاربران</b>\n\n";
 
         foreach ($stats as $stat) {
             $roleName = match ($stat['role']) {
@@ -1128,15 +1468,18 @@ class AdminPanel
                 default => $stat['role']
             };
 
-            $text .= "• {$roleName}: {$stat['count']} نفر\n";
+            $text .= "• {$roleName}: <b>{$stat['count']}</b> نفر\n";
         }
+
+        $text .= "\n" . Telegram::hr() . "\n";
+        $text .= "یک لیست را انتخاب کنید:";
 
         $keyboard = Telegram::inlineKeyboard([
             [
-                Telegram::inlineButton('مدیران', 'admin_list_admins'),
-                Telegram::inlineButton('مدیران ساختمان', 'admin_list_managers')
+                Telegram::inlineButton('👑 مدیران سیستم', 'admin_list_admins'),
+                Telegram::inlineButton('🏢 مدیران ساختمان', 'admin_list_managers')
             ],
-            [Telegram::inlineButton('مصرف‌کنندگان', 'admin_list_consumers')],
+            [Telegram::inlineButton('🏠 مصرف‌کنندگان', 'admin_list_consumers')],
             [Telegram::inlineButton('⏳ مصرف‌کنندگان بدون واحد', 'admin_unassigned_consumers')],
             [Telegram::inlineButton('⏳ مدیران بدون ساختمان', 'admin_unassigned_managers')],
             [Telegram::inlineButton('🔙 بازگشت', 'admin_home')]
@@ -1156,7 +1499,8 @@ class AdminPanel
              WHERE setting_key LIKE 'base_price_%'"
         );
 
-        $text = "💲 <b>تنظیمات نرخ‌ها</b>\n\n";
+        $text = "💲 <b>تنظیمات نرخ‌ها</b>\n";
+        $text .= Telegram::hr() . "\n";
 
         foreach ($prices as $price) {
             $name = match ($price['setting_key']) {
@@ -1166,10 +1510,11 @@ class AdminPanel
                 default => $price['setting_key']
             };
 
-            $text .= "• {$name}: " . Telegram::formatPrice((float)$price['setting_value']) . "\n";
+            $text .= "• {$name}: <b>" . Telegram::formatPrice((float)$price['setting_value']) . "</b>\n";
         }
 
-        $text .= "\n\n<b>تغییر نرخ:</b>";
+        $text .= "\n" . Telegram::hr() . "\n";
+        $text .= "<b>تغییر نرخ</b>";
 
         $keyboard = Telegram::inlineKeyboard([
             [
@@ -1214,11 +1559,16 @@ class AdminPanel
             "SELECT COUNT(*) as count FROM alerts WHERE is_read = 0"
         );
 
-        $text = "📈 <b>گزارش کلی سیستم</b>\n\n";
-        $text .= "🏢 ساختمان‌ها: {$buildingsCount[0]['count']}\n";
-        $text .= "🏠 واحدها: {$unitsCount[0]['count']}\n\n";
+        $carbonEngine = new CarbonEngine();
+        $carbon = $this->getSystemCarbonBreakdown('today', $carbonEngine);
 
-        $text .= "<b>مصرف امروز:</b>\n";
+        $text = "📈 <b>گزارش کلی سیستم</b>\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "🏢 ساختمان‌ها: <b>{$buildingsCount[0]['count']}</b>\n";
+        $text .= "🏠 واحدها: <b>{$unitsCount[0]['count']}</b>\n";
+        $text .= Telegram::hr() . "\n";
+
+        $text .= "<b>مصرف امروز</b>\n";
         foreach ($todayConsumption as $cons) {
             $name = match ($cons['metric_type']) {
                 'water' => '💧 آب',
@@ -1229,12 +1579,14 @@ class AdminPanel
             $text .= "{$name}: " . round((float)$cons['total'], 2) . "\n";
         }
 
-        $text .= "\n📋 تراکنش‌های در انتظار: {$pendingTrans[0]['count']}\n";
-        $text .= "⚠️ هشدارهای خوانده نشده: {$unreadAlerts[0]['count']}\n";
+        $text .= Telegram::hr() . "\n";
+        $text .= "📋 تراکنش‌های در انتظار: <b>{$pendingTrans[0]['count']}</b>\n";
+        $text .= "⚠️ هشدارهای خوانده‌نشده: <b>{$unreadAlerts[0]['count']}</b>\n";
+        $text .= "🌍 کربن امروز: <b>" . round((float)$carbon['total_kg'], 2) . "</b> kgCO₂e\n";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔄 بروزرسانی', 'admin_report')],
-            [Telegram::inlineButton('🔙 بازگشت', 'admin_home')]
+            [Telegram::inlineButton('بروزرسانی 🔄', 'admin_report')],
+            [Telegram::inlineButton('بازگشت 🔙', 'admin_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -1252,12 +1604,12 @@ class AdminPanel
              ORDER BY created_at DESC"
         );
 
-        $text = "👤 <b>لیست مدیران سیستم</b>\n\n";
+        $text = "👑 <b>مدیران سیستم</b>\n" . Telegram::hr() . "\n\n";
 
         if (empty($admins)) {
             $text .= "هیچ مدیری ثبت نشده است.";
         } else {
-            $text .= "تعداد: " . count($admins) . " نفر\n\n";
+            $text .= "تعداد: <b>" . count($admins) . "</b> نفر\n\n";
             foreach ($admins as $admin) {
                 $text .= "• " . $admin['first_name'];
                 if ($admin['username']) {
@@ -1291,12 +1643,12 @@ class AdminPanel
              ORDER BY u.created_at DESC"
         );
 
-        $text = "👥 <b>لیست مدیران ساختمان</b>\n\n";
+        $text = "🏢 <b>مدیران ساختمان</b>\n" . Telegram::hr() . "\n\n";
 
         if (empty($managers)) {
             $text .= "هیچ مدیر ساختمانی ثبت نشده است.";
         } else {
-            $text .= "تعداد: " . count($managers) . " نفر\n\n";
+            $text .= "تعداد: <b>" . count($managers) . "</b> نفر\n\n";
             foreach ($managers as $manager) {
                 $text .= "• " . $manager['first_name'];
                 if ($manager['username']) {
@@ -1335,7 +1687,7 @@ class AdminPanel
              LIMIT 50"
         );
 
-        $text = "👨‍👩‍👧‍👦 <b>لیست مصرف‌کنندگان</b>\n\n";
+        $text = "🏠 <b>مصرف‌کنندگان</b>\n" . Telegram::hr() . "\n\n";
 
         if (empty($consumers)) {
             $text .= "هیچ مصرف‌کننده‌ای ثبت نشده است.";
@@ -1370,7 +1722,8 @@ class AdminPanel
      */
     public function showAddBuilding(): void
     {
-        $text = "➕ <b>افزودن ساختمان جدید</b>\n\n";
+        $text = "➕ <b>افزودن ساختمان جدید</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "این بخش در حال توسعه است.\n\n";
         $text .= "<i>برای افزودن ساختمان، لطفاً از پنل وب استفاده کنید یا با پشتیبانی تماس بگیرید.</i>";
 
@@ -1390,24 +1743,26 @@ class AdminPanel
             "SELECT setting_key, setting_value
              FROM system_settings
              WHERE setting_key NOT LIKE 'base_price_%'
+               AND setting_key NOT LIKE 'runtime_%'
              ORDER BY setting_key"
         );
 
-        $text = "⚙️ <b>تنظیمات سیستم</b>\n\n";
+        $text = "⚙️ <b>تنظیمات سیستم</b>\n";
+        $text .= Telegram::hr() . "\n\n";
 
         if (empty($settings)) {
             $text .= "هیچ تنظیماتی یافت نشد.";
         } else {
             foreach ($settings as $setting) {
-                $key = str_replace('_', ' ', $setting['setting_key']);
-                $text .= "• " . ucfirst($key) . ": " . $setting['setting_value'] . "\n";
+                $key = str_replace('_', ' ', (string)$setting['setting_key']);
+                $text .= "• <b>" . ucfirst($key) . "</b>: " . $setting['setting_value'] . "\n";
             }
         }
 
         $text .= "\n<i>تنظیمات قابل تغییر از پایگاه داده هستند.</i>";
 
         $keyboard = Telegram::inlineKeyboard([
-            [Telegram::inlineButton('🔙 بازگشت', 'admin_home')]
+            [Telegram::inlineButton('بازگشت 🔙', 'admin_home')]
         ]);
 
         $this->respond($text, $keyboard);
@@ -1469,17 +1824,19 @@ class AdminPanel
             }
         }
 
-        $text = "🏢 <b>جزئیات ساختمان</b>\n\n";
+        $text = "🏢 <b>جزئیات ساختمان</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "نام: <b>{$b['name']}</b>\n";
-        $text .= "مدیر: " . ($b['manager_name'] ?? 'نامشخص') . "\n";
-        $text .= "طبقات: {$b['total_floors']}\n";
-        $text .= "واحدهای فعال: " . ($unitsCount[0]['count'] ?? 0) . "\n";
-        $text .= "هشدارهای خوانده‌نشده: " . ($unreadAlerts[0]['count'] ?? 0) . "\n\n";
+        $text .= "👤 مدیر: " . ($b['manager_name'] ?? 'نامشخص') . "\n";
+        $text .= "🏗 طبقات: <b>{$b['total_floors']}</b>\n";
+        $text .= "🏠 واحدهای فعال: <b>" . ($unitsCount[0]['count'] ?? 0) . "</b>\n";
+        $text .= "🔔 هشدارهای خوانده‌نشده: <b>" . ($unreadAlerts[0]['count'] ?? 0) . "</b>\n";
+        $text .= Telegram::hr() . "\n";
 
-        $text .= "<b>مصرف امروز ساختمان:</b>\n";
-        $text .= "💧 آب: " . round($today['water'], 1) . "\n";
-        $text .= "⚡ برق: " . round($today['electricity'], 1) . "\n";
-        $text .= "🔥 گاز: " . round($today['gas'], 1) . "\n";
+        $text .= "<b>مصرف امروز ساختمان</b>\n";
+        $text .= "💧 آب: <b>" . round($today['water'], 1) . "</b>\n";
+        $text .= "⚡ برق: <b>" . round($today['electricity'], 1) . "</b>\n";
+        $text .= "🔥 گاز: <b>" . round($today['gas'], 1) . "</b>\n";
 
         $keyboard = Telegram::inlineKeyboard([
             [Telegram::inlineButton('👤 تعیین مدیر ساختمان', 'admin_build_mgr_' . $buildingId)],
@@ -1506,7 +1863,8 @@ class AdminPanel
              LIMIT 25"
         );
 
-        $text = "👤 <b>انتخاب مدیر ساختمان</b>\n\n";
+        $text = "👤 <b>انتخاب مدیر ساختمان</b>\n";
+        $text .= Telegram::hr() . "\n";
         $text .= "ساختمان: <b>" . $building[0]['name'] . "</b>\n\n";
         $text .= "یک کاربر را انتخاب کنید (در صورت نیاز نقش به مدیر ساختمان تغییر می‌کند):";
 
